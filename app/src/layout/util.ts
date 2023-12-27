@@ -33,6 +33,7 @@ import {App} from "../index";
 import {afterLoadPlugin} from "../plugin/loader";
 import {setTitle} from "../dialog/processSystem";
 import {newCenterEmptyTab, resizeTabs} from "./tabUtil";
+import {setStorageVal} from "../protyle/util/compatibility";
 
 export const setPanelFocus = (element: Element) => {
     if (element.getAttribute("data-type") === "wnd") {
@@ -169,8 +170,53 @@ const dockToJSON = (dock: Dock) => {
 
 export const resetLayout = () => {
     fetchPost("/api/system/setUILayout", {layout: {}}, () => {
+        window.siyuan.storage[Constants.LOCAL_FILEPOSITION] = {};
+        setStorageVal(Constants.LOCAL_FILEPOSITION, window.siyuan.storage[Constants.LOCAL_FILEPOSITION]);
+        window.siyuan.storage[Constants.LOCAL_DIALOGPOSITION] = {};
+        setStorageVal(Constants.LOCAL_DIALOGPOSITION, window.siyuan.storage[Constants.LOCAL_DIALOGPOSITION]);
         window.location.reload();
     });
+};
+
+let saveCount = 0;
+export const saveLayout = () => {
+    const breakObj = {};
+    let layoutJSON: any = {};
+    if (isWindow()) {
+        layoutJSON = {
+            layout: {},
+        };
+        layoutToJSON(window.siyuan.layout.layout, layoutJSON.layout, breakObj);
+    } else {
+        const useElement = document.querySelector("#barDock use");
+        if (useElement) {
+            layoutJSON = {
+                hideDock: useElement.getAttribute("xlink:href") === "#iconDock",
+                layout: {},
+                bottom: dockToJSON(window.siyuan.layout.bottomDock),
+                left: dockToJSON(window.siyuan.layout.leftDock),
+                right: dockToJSON(window.siyuan.layout.rightDock),
+            };
+            layoutToJSON(window.siyuan.layout.layout, layoutJSON.layout, breakObj);
+        }
+    }
+
+    if (Object.keys(breakObj).length > 0 && saveCount < 10) {
+        saveCount++;
+        setTimeout(() => {
+            saveLayout();
+        }, Constants.TIMEOUT_LOAD);
+    } else {
+        saveCount = 0;
+        if (isWindow()) {
+            sessionStorage.setItem("layout", JSON.stringify(layoutJSON));
+        } else {
+            fetchPost("/api/system/setUILayout", {
+                layout: layoutJSON,
+                errorExit: false    // 后台不接受该参数，用于请求发生错误时退出程序
+            });
+        }
+    }
 };
 
 export const exportLayout = (options: {
@@ -178,13 +224,12 @@ export const exportLayout = (options: {
     cb?: () => void,
     onlyData: boolean,
     errorExit: boolean,
-    dropEditScroll?: boolean
 }) => {
     if (isWindow()) {
         const layoutJSON: any = {
             layout: {},
         };
-        layoutToJSON(window.siyuan.layout.layout, layoutJSON.layout, !!options.dropEditScroll);
+        layoutToJSON(window.siyuan.layout.layout, layoutJSON.layout);
         if (options.onlyData) {
             return layoutJSON;
         }
@@ -207,7 +252,7 @@ export const exportLayout = (options: {
         left: dockToJSON(window.siyuan.layout.leftDock),
         right: dockToJSON(window.siyuan.layout.rightDock),
     };
-    layoutToJSON(window.siyuan.layout.layout, layoutJSON.layout, !!options.dropEditScroll);
+    layoutToJSON(window.siyuan.layout.layout, layoutJSON.layout);
     if (options.onlyData) {
         return layoutJSON;
     }
@@ -299,18 +344,14 @@ export const JSONToCenter = (app: App, json: ILayoutJSON, layout?: Layout | Wnd 
                 child.headElement.querySelector(".item__text").classList.add("fn__none");
             }
         }
-        if (json.active) {
+        if (json.active && child.headElement) {
             child.headElement.setAttribute("data-init-active", "true");
         }
-        (layout as Wnd).addTab(child);
+        (layout as Wnd).addTab(child, false, false);
         (layout as Wnd).showHeading();
     } else if (json.instance === "Editor" && json.blockId) {
         if (window.siyuan.config.fileTree.openFilesUseCurrentTab) {
             (layout as Tab).headElement.classList.add("item--unupdate");
-        }
-        if (json.scrollAttr) {
-            // 历史数据兼容
-            json.scrollAttr.rootId = json.rootId;
         }
         (layout as Tab).headElement.setAttribute("data-initdata", JSON.stringify(json));
     } else if (json.instance === "Asset") {
@@ -380,12 +421,25 @@ export const JSONToLayout = (app: App, isStart: boolean) => {
     JSONToCenter(app, window.siyuan.config.uiLayout.layout, undefined);
     JSONToDock(window.siyuan.config.uiLayout, app);
     // 启动时不打开页签，需要移除没有钉住的页签
-    if (window.siyuan.config.fileTree.closeTabsOnStart && isStart) {
-        getAllTabs().forEach(item => {
-            if (item.headElement && !item.headElement.classList.contains("item--pin")) {
-                item.parent.removeTab(item.id, false, false, false);
-            }
-        });
+    if (window.siyuan.config.fileTree.closeTabsOnStart) {
+        /// #if BROWSER
+        if (!sessionStorage.getItem(Constants.LOCAL_SESSION_FIRSTLOAD)) {
+            getAllTabs().forEach(item => {
+                if (item.headElement && !item.headElement.classList.contains("item--pin")) {
+                    item.parent.removeTab(item.id, false, false);
+                }
+            });
+            sessionStorage.setItem(Constants.LOCAL_SESSION_FIRSTLOAD, "true");
+        }
+        /// #else
+        if (isStart) {
+            getAllTabs().forEach(item => {
+                if (item.headElement && !item.headElement.classList.contains("item--pin")) {
+                    item.parent.removeTab(item.id, false, false);
+                }
+            });
+        }
+        /// #endif
     }
     app.plugins.forEach(item => {
         afterLoadPlugin(item);
@@ -407,7 +461,7 @@ export const JSONToLayout = (app: App, isStart: boolean) => {
                     const tabId = item.getAttribute("data-id");
                     const tab = getInstanceById(tabId) as Tab;
                     if (tab) {
-                        tab.parent.removeTab(tabId, false, false, false);
+                        tab.parent.removeTab(tabId, false, false);
                     }
                 }
             }
@@ -425,13 +479,13 @@ export const JSONToLayout = (app: App, isStart: boolean) => {
         document.querySelectorAll('li[data-type="tab-header"][data-init-active="true"]').forEach((item: HTMLElement) => {
             item.removeAttribute("data-init-active");
             const tab = getInstanceById(item.getAttribute("data-id")) as Tab;
-            tab.parent.switchTab(item, false, false);
+            tab.parent.switchTab(item, false, false, true, false);
         });
     }
     resizeTopBar();
 };
 
-export const layoutToJSON = (layout: Layout | Wnd | Tab | Model, json: any, dropEditScroll = false) => {
+export const layoutToJSON = (layout: Layout | Wnd | Tab | Model, json: any, breakObj?: IObject) => {
     if (layout instanceof Layout) {
         json.direction = layout.direction;
         if (layout.parent) {
@@ -474,15 +528,16 @@ export const layoutToJSON = (layout: Layout | Wnd | Tab | Model, json: any, drop
         }
         json.instance = "Tab";
     } else if (layout instanceof Editor) {
+        if (!layout.editor.protyle.notebookId && breakObj) {
+            breakObj.editor = "true";
+        }
         json.notebookId = layout.editor.protyle.notebookId;
         json.blockId = layout.editor.protyle.block.id;
         json.rootId = layout.editor.protyle.block.rootID;
         json.mode = layout.editor.protyle.preview.element.classList.contains("fn__none") ? "wysiwyg" : "preview";
-        json.action = layout.editor.protyle.block.showAll ? Constants.CB_GET_ALL : "";
+        json.action = layout.editor.protyle.block.showAll ? Constants.CB_GET_ALL : Constants.CB_GET_SCROLL;
         json.instance = "Editor";
-        if (!dropEditScroll) {
-            json.scrollAttr = saveScroll(layout.editor.protyle, true);
-        }
+        saveScroll(layout.editor.protyle);
     } else if (layout instanceof Asset) {
         json.path = layout.path;
         if (layout.pdfObject) {
@@ -549,13 +604,13 @@ export const layoutToJSON = (layout: Layout | Wnd | Tab | Model, json: any, drop
             layout.children.forEach((item: Layout | Wnd | Tab) => {
                 const itemJSON = {};
                 json.children.push(itemJSON);
-                layoutToJSON(item, itemJSON, dropEditScroll);
+                layoutToJSON(item, itemJSON, breakObj);
             });
         }
     } else if (layout instanceof Tab) {
         if (layout.model) {
             json.children = {};
-            layoutToJSON(layout.model, json.children, dropEditScroll);
+            layoutToJSON(layout.model, json.children, breakObj);
         } else if (layout.headElement) {
             // 当前页签没有激活时编辑器没有初始化
             json.children = JSON.parse(layout.headElement.getAttribute("data-initdata") || "{}");
@@ -650,10 +705,10 @@ export const newModelByInitData = (app: App, tab: Tab, json: any) => {
         model = new Editor({
             app,
             tab,
+            rootId: json.rootId,
             blockId: json.blockId,
             mode: json.mode,
             action: typeof json.action === "string" ? [json.action] : json.action,
-            scrollAttr: json.scrollAttr,
         });
     }
     return model;

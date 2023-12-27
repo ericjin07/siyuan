@@ -20,6 +20,40 @@ import {syncGuide} from "../../sync/syncGuide";
 import {Inbox} from "../../layout/dock/Inbox";
 import {App} from "../../index";
 import {setTitle} from "../../dialog/processSystem";
+import {checkFold} from "../../util/noRelyPCFunction";
+import {MobileCustom} from "../dock/MobileCustom";
+import {Menu} from "../../plugin/Menu";
+import {showMessage} from "../../dialog/message";
+
+let custom: MobileCustom;
+const openDockMenu = (app: App) => {
+    const menu = new Menu("dockMobileMenu");
+    if (menu.isOpen) {
+        return;
+    }
+    app.plugins.forEach((plugin) => {
+        Object.keys(plugin.docks).forEach((dockId) => {
+            menu.addItem({
+                label: plugin.docks[dockId].config.title,
+                icon: plugin.docks[dockId].config.icon,
+                click() {
+                    if (custom?.type === dockId) {
+                        return;
+                    } else {
+                        if (custom) {
+                            custom.destroy();
+                        }
+                        custom = plugin.docks[dockId].mobileModel(document.querySelector('#sidebar [data-type="sidebar-plugin"]'));
+                    }
+                }
+            });
+        });
+    });
+    menu.fullscreen("bottom");
+    if (menu.element.lastElementChild.innerHTML === "") {
+        showMessage(window.siyuan.languages._kernel[122]);
+    }
+};
 
 export const initFramework = (app: App, isStart: boolean) => {
     setInlineStyle();
@@ -37,10 +71,16 @@ export const initFramework = (app: App, isStart: boolean) => {
         target: Element
     }) => {
         const svgElement = hasTopClosestByTag(event.target, "svg");
-        if (!svgElement || svgElement.classList.contains("toolbar__icon--active")) {
+        if (!svgElement) {
             return;
         }
         const type = svgElement.getAttribute("data-type");
+        if (svgElement.classList.contains("toolbar__icon--active")) {
+            if (type === "sidebar-plugin-tab") {
+                openDockMenu(app);
+            }
+            return;
+        }
         if (!type) {
             closePanel();
             return;
@@ -50,6 +90,7 @@ export const initFramework = (app: App, isStart: boolean) => {
             if (!itemType) {
                 return;
             }
+            const tabPanelElement = sidebarElement.lastElementChild.querySelector(`[data-type="${itemType.replace("-tab", "")}"]`);
             if (itemType === type) {
                 if (type === "sidebar-outline-tab") {
                     if (!outline) {
@@ -77,12 +118,19 @@ export const initFramework = (app: App, isStart: boolean) => {
                     }
                 } else if (type === "sidebar-inbox-tab" && !inbox) {
                     inbox = new Inbox(app, document.querySelector('#sidebar [data-type="sidebar-inbox"]'));
+                } else if (type === "sidebar-plugin-tab") {
+                    if (!custom) {
+                        tabPanelElement.innerHTML = `<div class="b3-list--empty">${window.siyuan.languages.emptyContent}</div>`;
+                        openDockMenu(app);
+                    } else if (custom.update) {
+                        custom.update();
+                    }
                 }
                 svgElement.classList.add("toolbar__icon--active");
-                sidebarElement.lastElementChild.querySelector(`[data-type="${itemType.replace("-tab", "")}"]`).classList.remove("fn__none");
+                tabPanelElement.classList.remove("fn__none");
             } else {
                 item.classList.remove("toolbar__icon--active");
-                sidebarElement.lastElementChild.querySelector(`[data-type="${itemType.replace("-tab", "")}"]`).classList.add("fn__none");
+                tabPanelElement.classList.add("fn__none");
             }
         });
     });
@@ -134,7 +182,9 @@ export const initFramework = (app: App, isStart: boolean) => {
             } else {
                 fetchPost("/api/block/getRecentUpdatedBlocks", {}, (response) => {
                     if (response.data.length !== 0) {
-                        openMobileFileById(app, response.data[0].id, [Constants.CB_GET_HL, Constants.CB_GET_CONTEXT, Constants.CB_GET_ROOTSCROLL]);
+                        checkFold(response.data[0].id, (zoomIn) => {
+                            openMobileFileById(app, response.data[0].id, zoomIn ? [Constants.CB_GET_ALL, Constants.CB_GET_HL] : [Constants.CB_GET_HL, Constants.CB_GET_CONTEXT, Constants.CB_GET_ROOTSCROLL]);
+                        });
                     } else {
                         setEmpty(app);
                     }

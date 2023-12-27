@@ -1,7 +1,7 @@
 import {hasClosestBlock, hasClosestByAttribute} from "../protyle/util/hasClosest";
 import {getEditorRange, getSelectionPosition} from "../protyle/util/selection";
 
-const bgFade = (element: HTMLElement) => {
+export const bgFade = (element: Element) => {
     element.classList.add("protyle-wysiwyg--hl");
     setTimeout(function () {
         element.classList.remove("protyle-wysiwyg--hl");
@@ -63,7 +63,7 @@ export const scrollCenter = (protyle: IProtyle, nodeElement?: Element, top = fal
 
     let offsetTop = 0;
     let parentNodeElement = nodeElement;
-    while (!parentNodeElement.classList.contains("protyle-wysiwyg")) {
+    while (parentNodeElement && !parentNodeElement.classList.contains("protyle-wysiwyg")) {
         offsetTop += (parentNodeElement as HTMLElement).offsetTop;
         parentNodeElement = parentNodeElement.parentElement;
     }

@@ -84,8 +84,8 @@ func ImportSY(zipPath, boxID, toPath string) (err error) {
 	util.PushEndlessProgress(Conf.Language(73))
 	defer util.ClearPushProgress(100)
 
-	syncLock.Lock()
-	defer syncLock.Unlock()
+	lockSync()
+	defer unlockSync()
 
 	baseName := filepath.Base(zipPath)
 	ext := filepath.Ext(baseName)
@@ -147,7 +147,9 @@ func ImportSY(zipPath, boxID, toPath string) (err error) {
 				return ast.WalkContinue
 			}
 
-			newNodeID := ast.NewNodeID()
+			// 新 ID 保留时间部分，仅修改随机值，避免时间变化导致更新时间早于创建时间
+			// Keep original creation time when importing .sy.zip https://github.com/siyuan-note/siyuan/issues/9923
+			newNodeID := util.TimeFromID(n.ID) + "-" + gulu.Rand.String(7)
 			blockIDs[n.ID] = newNodeID
 			oldNodeID := n.ID
 			n.ID = newNodeID
@@ -550,8 +552,8 @@ func ImportData(zipPath string) (err error) {
 	util.PushEndlessProgress(Conf.Language(73))
 	defer util.ClearPushProgress(100)
 
-	syncLock.Lock()
-	defer syncLock.Unlock()
+	lockSync()
+	defer unlockSync()
 
 	baseName := filepath.Base(zipPath)
 	ext := filepath.Ext(baseName)
@@ -604,6 +606,9 @@ func ImportFromLocalPath(boxID, localPath string, toPath string) (err error) {
 			err = errors.New("import from local path failed, please check kernel log for details")
 		}
 	}()
+
+	lockSync()
+	defer unlockSync()
 
 	WaitForWritingFiles()
 

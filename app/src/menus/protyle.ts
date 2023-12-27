@@ -45,7 +45,7 @@ import {pushBack} from "../mobile/util/MobileBackFoward";
 import {copyPNG, exportAsset} from "./util";
 import {removeInlineType} from "../protyle/toolbar/util";
 import {alignImgCenter, alignImgLeft} from "../protyle/wysiwyg/commonHotkey";
-import {renameTag} from "../util/noRelyPCFunction";
+import {checkFold, renameTag} from "../util/noRelyPCFunction";
 import {hideElements} from "../protyle/ui/hideElements";
 import {emitOpenMenu} from "../plugin/EventBus";
 import {openMobileFileById} from "../mobile/editor";
@@ -279,7 +279,7 @@ export const fileAnnotationRefMenu = (protyle: IProtyle, refElement: HTMLElement
         y: rect.top + 26,
         h: 26
     });
-
+    window.siyuan.menus.menu.element.setAttribute("data-from", hasClosestByClassName(protyle.element, "block__edit") ? "popover" : "app");
     anchorElement.select();
     window.siyuan.menus.menu.removeCB = () => {
         if (nodeElement.outerHTML !== oldHTML) {
@@ -351,12 +351,12 @@ export const refMenu = (protyle: IProtyle, element: HTMLElement) => {
         icon: "iconOpen",
         accelerator: window.siyuan.config.keymap.editor.general.openBy.custom + "/Click",
         click() {
-            fetchPost("/api/block/checkBlockFold", {id: refBlockId}, (foldResponse) => {
+            checkFold(refBlockId, (zoomIn, action) => {
                 openFileById({
                     app: protyle.app,
                     id: refBlockId,
-                    action: foldResponse.data ? [Constants.CB_GET_FOCUS, Constants.CB_GET_ALL] : [Constants.CB_GET_FOCUS, Constants.CB_GET_CONTEXT, Constants.CB_GET_ROOTSCROLL],
-                    zoomIn: foldResponse.data
+                    action,
+                    zoomIn
                 });
             });
         }
@@ -366,13 +366,13 @@ export const refMenu = (protyle: IProtyle, element: HTMLElement) => {
         icon: "iconEyeoff",
         accelerator: window.siyuan.config.keymap.editor.general.refTab.custom + "/⌘Click",
         click() {
-            fetchPost("/api/block/checkBlockFold", {id: refBlockId}, (foldResponse) => {
+            checkFold(refBlockId, (zoomIn) => {
                 openFileById({
                     app: protyle.app,
                     id: refBlockId,
-                    action: foldResponse.data ? [Constants.CB_GET_FOCUS, Constants.CB_GET_ALL] : [Constants.CB_GET_HL, Constants.CB_GET_CONTEXT, Constants.CB_GET_ROOTSCROLL],
+                    action: zoomIn ? [Constants.CB_GET_HL, Constants.CB_GET_ALL] : [Constants.CB_GET_HL, Constants.CB_GET_CONTEXT, Constants.CB_GET_ROOTSCROLL],
                     keepCursor: true,
-                    zoomIn: foldResponse.data
+                    zoomIn
                 });
             });
         }
@@ -382,13 +382,13 @@ export const refMenu = (protyle: IProtyle, element: HTMLElement) => {
         icon: "iconLayoutRight",
         accelerator: window.siyuan.config.keymap.editor.general.insertRight.custom + "/⌥Click",
         click() {
-            fetchPost("/api/block/checkBlockFold", {id: refBlockId}, (foldResponse) => {
+            checkFold(refBlockId, (zoomIn, action) => {
                 openFileById({
                     app: protyle.app,
                     id: refBlockId,
                     position: "right",
-                    action: foldResponse.data ? [Constants.CB_GET_FOCUS, Constants.CB_GET_ALL] : [Constants.CB_GET_FOCUS, Constants.CB_GET_CONTEXT, Constants.CB_GET_ROOTSCROLL],
-                    zoomIn: foldResponse.data
+                    action,
+                    zoomIn
                 });
             });
         }
@@ -398,13 +398,13 @@ export const refMenu = (protyle: IProtyle, element: HTMLElement) => {
         icon: "iconLayoutBottom",
         accelerator: window.siyuan.config.keymap.editor.general.insertBottom.custom + (window.siyuan.config.keymap.editor.general.insertBottom.custom ? "/" : "") + "⇧Click",
         click() {
-            fetchPost("/api/block/checkBlockFold", {id: refBlockId}, (foldResponse) => {
+            checkFold(refBlockId, (zoomIn, action) => {
                 openFileById({
                     app: protyle.app,
                     id: refBlockId,
                     position: "bottom",
-                    action: foldResponse.data ? [Constants.CB_GET_FOCUS, Constants.CB_GET_ALL] : [Constants.CB_GET_FOCUS, Constants.CB_GET_CONTEXT, Constants.CB_GET_ROOTSCROLL],
-                    zoomIn: foldResponse.data
+                    action,
+                    zoomIn
                 });
             });
         }
@@ -583,6 +583,7 @@ export const refMenu = (protyle: IProtyle, element: HTMLElement) => {
         y: rect.top + 26,
         h: 26
     });
+    window.siyuan.menus.menu.element.setAttribute("data-from", hasClosestByClassName(protyle.element, "block__edit") ? "popover" : "app");
     if (!protyle.disabled) {
         window.siyuan.menus.menu.element.querySelector("input").select();
         window.siyuan.menus.menu.removeCB = () => {
@@ -1062,6 +1063,7 @@ export const imgMenu = (protyle: IProtyle, range: Range, assetElement: HTMLEleme
     }
 
     window.siyuan.menus.menu.popup({x: position.clientX, y: position.clientY});
+    window.siyuan.menus.menu.element.setAttribute("data-from", hasClosestByClassName(protyle.element, "block__edit") ? "popover" : "app");
     if (!protyle.disabled) {
         const textElements = window.siyuan.menus.menu.element.querySelectorAll("textarea");
         textElements[0].focus();
@@ -1248,6 +1250,7 @@ export const linkMenu = (protyle: IProtyle, linkElement: HTMLElement, focusText 
         y: rect.top + 26,
         h: 26
     });
+    window.siyuan.menus.menu.element.setAttribute("data-from", hasClosestByClassName(protyle.element, "block__edit") ? "popover" : "app");
     const textElements = window.siyuan.menus.menu.element.querySelectorAll("textarea");
     if (focusText || protyle.lute.IsValidLinkDest(linkAddress)) {
         textElements[1].select();
@@ -1384,6 +1387,7 @@ export const tagMenu = (protyle: IProtyle, tagElement: HTMLElement) => {
         y: rect.top + 26,
         h: 26
     });
+    window.siyuan.menus.menu.element.setAttribute("data-from", hasClosestByClassName(protyle.element, "block__edit") ? "popover" : "app");
     window.siyuan.menus.menu.element.querySelector("input").select();
 };
 
@@ -1587,7 +1591,7 @@ export const tableMenu = (protyle: IProtyle, nodeElement: Element, cellElement: 
     }
     const isPinHead = nodeElement.getAttribute("custom-pinthead");
     menus.push({
-        icon: "iconPin",
+        icon: isPinHead ? "iconUnpin" : "iconPin",
         label: isPinHead ? window.siyuan.languages.unpinTableHead : window.siyuan.languages.pinTableHead,
         click: () => {
             const html = nodeElement.outerHTML;

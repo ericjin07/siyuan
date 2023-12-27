@@ -32,7 +32,6 @@ import (
 	"github.com/88250/lute/ast"
 	"github.com/88250/lute/parse"
 	"github.com/88250/lute/render"
-	"github.com/Masterminds/sprig/v3"
 	"github.com/araddon/dateparse"
 	"github.com/siyuan-note/filelock"
 	"github.com/siyuan-note/logging"
@@ -44,7 +43,9 @@ import (
 )
 
 func RenderGoTemplate(templateContent string) (ret string, err error) {
-	tpl, err := template.New("").Funcs(sprig.TxtFuncMap()).Parse(templateContent)
+	tmpl := template.New("")
+	tmpl = tmpl.Funcs(util.BuiltInTemplateFuncs())
+	tpl, err := tmpl.Parse(templateContent)
 	if nil != err {
 		return "", errors.New(fmt.Sprintf(Conf.Language(44), err.Error()))
 	}
@@ -216,7 +217,7 @@ func renderTemplate(p, id string, preview bool) (string, error) {
 		dataModel["alias"] = block.Alias
 	}
 
-	funcMap := sprig.TxtFuncMap()
+	funcMap := util.BuiltInTemplateFuncs()
 	funcMap["queryBlocks"] = func(stmt string, args ...string) (ret []*sql.Block) {
 		for _, arg := range args {
 			stmt = strings.Replace(stmt, "?", arg, 1)
@@ -305,7 +306,7 @@ func renderTemplate(p, id string, preview bool) (string, error) {
 			if nil != parseErr {
 				logging.LogErrorf("parse attribute view [%s] failed: %s", n.AttributeViewID, parseErr)
 			} else {
-				cloned := av.ShallowCloneAttributeView(attrView)
+				cloned := attrView.ShallowClone()
 				if nil != cloned {
 					n.AttributeViewID = cloned.ID
 					if !preview {
@@ -315,7 +316,7 @@ func renderTemplate(p, id string, preview bool) (string, error) {
 						}
 					} else {
 						// 预览时使用简单表格渲染
-						view, getErr := attrView.GetView()
+						view, getErr := attrView.GetCurrentView()
 						if nil != getErr {
 							logging.LogErrorf("get attribute view [%s] failed: %s", n.AttributeViewID, getErr)
 							return ast.WalkContinue

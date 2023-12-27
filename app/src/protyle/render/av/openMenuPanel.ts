@@ -21,13 +21,20 @@ import {openAsset} from "../../../editor/util";
 /// #endif
 import {previewImage} from "../../preview/image";
 import {assetMenu} from "../../../menus/protyle";
+import {addView, bindViewEvent, getSwitcherHTML, getViewHTML, openViewMenu} from "./view";
+import {removeBlock} from "../../wysiwyg/remove";
+import {getEditorRange} from "../../util/selection";
+import {avRender} from "./render";
+import {setPageSize} from "./row";
+import {bindRelationEvent, getRelationHTML, openSearchAV, setRelationCell, updateRelation} from "./relation";
 
 export const openMenuPanel = (options: {
     protyle: IProtyle,
     blockElement: Element,
-    type: "select" | "properties" | "config" | "sorts" | "filters" | "edit" | "date" | "asset",
+    type: "select" | "properties" | "config" | "sorts" | "filters" | "edit" | "date" | "asset" | "switcher" | "relation",
     colId?: string, // for edit
-    cellElements?: HTMLElement[]    // for select & date
+    cellElements?: HTMLElement[],   // for select & date & relation & asset
+    cb?: (avPanelElement: Element) => void
 }) => {
     let avPanelElement = document.querySelector(".av__panel");
     if (avPanelElement) {
@@ -38,15 +45,18 @@ export const openMenuPanel = (options: {
     const avID = options.blockElement.getAttribute("data-av-id");
     fetchPost("/api/av/renderAttributeView", {
         id: avID,
+        pageSize: parseInt(options.blockElement.getAttribute("data-page-size")) || undefined,
     }, (response) => {
         const data = response.data as IAV;
         let html;
         if (options.type === "config") {
-            html = getConfigHTML(data.view);
+            html = getViewHTML(data.view);
         } else if (options.type === "properties") {
             html = getPropertiesHTML(data.view);
         } else if (options.type === "sorts") {
             html = getSortsHTML(data.view.columns, data.view.sorts);
+        } else if (options.type === "switcher") {
+            html = getSwitcherHTML(data.views, data.viewID);
         } else if (options.type === "filters") {
             html = getFiltersHTML(data.view);
         } else if (options.type === "select") {
@@ -57,6 +67,17 @@ export const openMenuPanel = (options: {
             html = getEditHTML({protyle: options.protyle, data, colId: options.colId});
         } else if (options.type === "date") {
             html = getDateHTML(data.view, options.cellElements);
+        } else if (options.type === "relation") {
+            html = getRelationHTML(data, options.cellElements);
+            if (!html) {
+                openMenuPanel({
+                    protyle: options.protyle,
+                    blockElement: options.blockElement,
+                    type: "edit",
+                    colId: options.cellElements[0].dataset.colId
+                });
+                return;
+            }
         }
 
         document.body.insertAdjacentHTML("beforeend", `<div class="av__panel" style="z-index: ${++window.siyuan.zIndex}">
@@ -65,8 +86,8 @@ export const openMenuPanel = (options: {
 </div>`);
         avPanelElement = document.querySelector(".av__panel");
         const menuElement = avPanelElement.lastElementChild as HTMLElement;
-        const tabRect = options.blockElement.querySelector(".layout-tab-bar")?.getBoundingClientRect();
-        if (["select", "date", "asset"].includes(options.type)) {
+        const tabRect = options.blockElement.querySelector(".av__views")?.getBoundingClientRect();
+        if (["select", "date", "asset", "relation"].includes(options.type)) {
             const cellRect = options.cellElements[options.cellElements.length - 1].getBoundingClientRect();
             if (options.type === "select") {
                 bindSelectEvent(options.protyle, data, menuElement, options.cellElements);
@@ -76,12 +97,16 @@ export const openMenuPanel = (options: {
                 bindAssetEvent({protyle: options.protyle, data, menuElement, cellElements: options.cellElements});
                 setTimeout(() => {
                     setPosition(menuElement, cellRect.left, cellRect.bottom, cellRect.height);
-                }, Constants.TIMEOUT_LOAD);  // 等待图片加载
+                }, Constants.TIMEOUT_LOAD);  // 等待加载
+            } else if (options.type === "relation") {
+                bindRelationEvent({protyle: options.protyle, data, menuElement, cellElements: options.cellElements});
             }
-            if (["select", "date"].includes(options.type)) {
+            if (["select", "date", "relation"].includes(options.type)) {
                 const inputElement = menuElement.querySelector("input");
-                inputElement.select();
-                inputElement.focus();
+                if (inputElement) {
+                    inputElement.select();
+                    inputElement.focus();
+                }
                 setPosition(menuElement, cellRect.left, cellRect.bottom, cellRect.height);
             }
         } else {
@@ -90,7 +115,12 @@ export const openMenuPanel = (options: {
                 bindSortsEvent(options.protyle, menuElement, data);
             } else if (options.type === "edit") {
                 bindEditEvent({protyle: options.protyle, data, menuElement});
+            } else if (options.type === "config") {
+                bindViewEvent({protyle: options.protyle, data, menuElement});
             }
+        }
+        if (options.cb) {
+            options.cb(avPanelElement);
         }
         avPanelElement.addEventListener("dragstart", (event: DragEvent) => {
             window.siyuan.dragElement = event.target as HTMLElement;
@@ -115,15 +145,123 @@ export const openMenuPanel = (options: {
             if (!targetElement) {
                 return;
             }
-            let type = "columns";
             const isTop = targetElement.classList.contains("dragover__top");
+            const sourceId = sourceElement.dataset.id;
+            const targetId = targetElement.dataset.id;
             if (targetElement.querySelector('[data-type="removeSort"]')) {
-                type = "sorts";
-            } else if (targetElement.querySelector('[data-type="removeFilter"]')) {
-                type = "filters";
-            } else if (targetElement.querySelector('[data-type="editAssetItem"]')) {
-                type = "assets";
-            } else if (targetElement.querySelector('[data-type="setColOption"]')) {
+                const changeData = data.view.sorts;
+                const oldData = Object.assign([], changeData);
+                let sortFilter: IAVSort;
+                changeData.find((sort, index: number) => {
+                    if (sort.column === sourceId) {
+                        sortFilter = changeData.splice(index, 1)[0];
+                        return true;
+                    }
+                });
+                changeData.find((sort, index: number) => {
+                    if (sort.column === targetId) {
+                        if (isTop) {
+                            changeData.splice(index, 0, sortFilter);
+                        } else {
+                            changeData.splice(index + 1, 0, sortFilter);
+                        }
+                        return true;
+                    }
+                });
+
+                transaction(options.protyle, [{
+                    action: "setAttrViewSorts",
+                    avID,
+                    data: changeData
+                }], [{
+                    action: "setAttrViewSorts",
+                    avID,
+                    data: oldData
+                }]);
+                menuElement.innerHTML = getSortsHTML(data.view.columns, data.view.sorts);
+                bindSortsEvent(options.protyle, menuElement, data);
+                return;
+            }
+            if (targetElement.querySelector('[data-type="removeFilter"]')) {
+                const changeData = data.view.filters;
+                const oldData = Object.assign([], changeData);
+                let targetFilter: IAVFilter;
+                changeData.find((filter, index: number) => {
+                    if (filter.column === sourceId) {
+                        targetFilter = changeData.splice(index, 1)[0];
+                        return true;
+                    }
+                });
+                changeData.find((filter, index: number) => {
+                    if (filter.column === targetId) {
+                        if (isTop) {
+                            changeData.splice(index, 0, targetFilter);
+                        } else {
+                            changeData.splice(index + 1, 0, targetFilter);
+                        }
+                        return true;
+                    }
+                });
+
+                transaction(options.protyle, [{
+                    action: "setAttrViewFilters",
+                    avID,
+                    data: changeData
+                }], [{
+                    action: "setAttrViewFilters",
+                    avID,
+                    data: oldData
+                }]);
+                menuElement.innerHTML = getFiltersHTML(data.view);
+                return;
+            }
+            if (targetElement.querySelector('[data-type="av-view-edit"]')) {
+                transaction(options.protyle, [{
+                    action: "sortAttrViewView",
+                    avID,
+                    id: sourceId,
+                    previousID: isTop ? targetElement.previousElementSibling?.getAttribute("data-id") : targetElement.getAttribute("data-id")
+                }], [{
+                    action: "sortAttrViewView",
+                    avID,
+                    id: sourceId,
+                    previousID: sourceElement.previousElementSibling?.getAttribute("data-id")
+                }]);
+                if (isTop) {
+                    targetElement.before(sourceElement);
+                    targetElement.classList.remove("dragover__top");
+                } else {
+                    targetElement.after(sourceElement);
+                    targetElement.classList.remove("dragover__bottom");
+                }
+                return;
+            }
+            if (targetElement.querySelector('[data-type="editAssetItem"]')) {
+                if (isTop) {
+                    targetElement.before(sourceElement);
+                } else {
+                    targetElement.after(sourceElement);
+                }
+                const replaceValue: IAVCellAssetValue[] = [];
+                Array.from(targetElement.parentElement.children).forEach((item: HTMLElement) => {
+                    if (item.dataset.content) {
+                        replaceValue.push({
+                            content: item.dataset.content,
+                            name: item.dataset.name,
+                            type: item.dataset.type as "image" | "file",
+                        });
+                    }
+                });
+                updateAssetCell({
+                    protyle: options.protyle,
+                    data,
+                    cellElements: options.cellElements,
+                    type: "replace",
+                    replaceValue
+                });
+                return;
+            }
+            if (targetElement.querySelector('[data-type="setColOption"]')) {
                 const colId = options.cellElements ? options.cellElements[0].dataset.colId : menuElement.querySelector(".b3-menu__item").getAttribute("data-col-id");
                 const changeData = data.view.columns.find((column) => column.id === colId).options;
                 const oldData = Object.assign([], changeData);
@@ -168,100 +306,17 @@ export const openMenuPanel = (options: {
                 }
                 return;
             }
-            const sourceId = sourceElement.dataset.id;
-            const targetId = targetElement.dataset.id;
-            if (type === "sorts") {
-                const changeData = data.view.sorts;
-                const oldData = Object.assign([], changeData);
-                let sortFilter: IAVSort;
-                changeData.find((sort, index: number) => {
-                    if (sort.column === sourceId) {
-                        sortFilter = changeData.splice(index, 1)[0];
-                        return true;
-                    }
-                });
-                changeData.find((sort, index: number) => {
-                    if (sort.column === targetId) {
-                        if (isTop) {
-                            changeData.splice(index, 0, sortFilter);
-                        } else {
-                            changeData.splice(index + 1, 0, sortFilter);
-                        }
-                        return true;
-                    }
-                });
-
-                transaction(options.protyle, [{
-                    action: "setAttrViewSorts",
-                    avID,
-                    data: changeData
-                }], [{
-                    action: "setAttrViewSorts",
-                    avID,
-                    data: oldData
-                }]);
-                menuElement.innerHTML = getSortsHTML(data.view.columns, data.view.sorts);
-                bindSortsEvent(options.protyle, menuElement, data);
-                return;
-            }
-            if (type === "filters") {
-                const changeData = data.view.filters;
-                const oldData = Object.assign([], changeData);
-                let targetFilter: IAVFilter;
-                changeData.find((filter, index: number) => {
-                    if (filter.column === sourceId) {
-                        targetFilter = changeData.splice(index, 1)[0];
-                        return true;
-                    }
-                });
-                changeData.find((filter, index: number) => {
-                    if (filter.column === targetId) {
-                        if (isTop) {
-                            changeData.splice(index, 0, targetFilter);
-                        } else {
-                            changeData.splice(index + 1, 0, targetFilter);
-                        }
-                        return true;
-                    }
-                });
-
-                transaction(options.protyle, [{
-                    action: "setAttrViewFilters",
-                    avID,
-                    data: changeData
-                }], [{
-                    action: "setAttrViewFilters",
-                    avID,
-                    data: oldData
-                }]);
-                menuElement.innerHTML = getFiltersHTML(data.view);
-                return;
-            }
-            if (type === "assets") {
+            if (targetElement.getAttribute("data-type") === "setRelationCell") {
                 if (isTop) {
                     targetElement.before(sourceElement);
                 } else {
                     targetElement.after(sourceElement);
                 }
-                const replaceValue: IAVCellAssetValue[] = [];
-                Array.from(targetElement.parentElement.children).forEach((item: HTMLElement) => {
-                    if (item.dataset.content) {
-                        replaceValue.push({
-                            content: item.dataset.content,
-                            name: item.dataset.name,
-                            type: item.dataset.type as "image" | "file",
-                        });
-                    }
-                });
-                updateAssetCell({
-                    protyle: options.protyle,
-                    data,
-                    cellElements: options.cellElements,
-                    type: "replace",
-                    replaceValue
-                });
+                targetElement.classList.remove("dragover__bottom", "dragover__top");
+                setRelationCell(options.protyle, options.blockElement as HTMLElement, sourceElement.parentElement, options.cellElements);
                 return;
             }
+
             transaction(options.protyle, [{
                 action: "sortAttrViewCol",
                 avID,
@@ -344,13 +399,14 @@ export const openMenuPanel = (options: {
                     event.preventDefault();
                     event.stopPropagation();
                     break;
-                } else if (type === "goConfig") {
-                    menuElement.innerHTML = getConfigHTML(data.view);
+                } else if (type === "go-config") {
+                    menuElement.innerHTML = getViewHTML(data.view);
                     setPosition(menuElement, tabRect.right - menuElement.clientWidth, tabRect.bottom, tabRect.height);
+                    bindViewEvent({protyle: options.protyle, data, menuElement});
                     event.preventDefault();
                     event.stopPropagation();
                     break;
-                } else if (type === "goProperties") {
+                } else if (type === "go-properties") {
                     menuElement.innerHTML = getPropertiesHTML(data.view);
                     setPosition(menuElement, tabRect.right - menuElement.clientWidth, tabRect.bottom, tabRect.height);
                     event.preventDefault();
@@ -511,6 +567,71 @@ export const openMenuPanel = (options: {
                     event.preventDefault();
                     event.stopPropagation();
                     break;
+                } else if (type === "update-view-icon") {
+                    const rect = target.getBoundingClientRect();
+                    openEmojiPanel("", "av", {
+                        x: rect.left,
+                        y: rect.bottom,
+                        h: rect.height,
+                        w: rect.width
+                    }, (unicode) => {
+                        transaction(options.protyle, [{
+                            action: "setAttrViewViewIcon",
+                            avID,
+                            id: data.viewID,
+                            data: unicode,
+                        }], [{
+                            action: "setAttrViewViewIcon",
+                            id: data.viewID,
+                            avID,
+                            data: target.dataset.icon,
+                        }]);
+                        target.innerHTML = unicode ? unicode2Emoji(unicode) : '<svg><use xlink:href="#iconTable"></use></svg>';
+                        target.dataset.icon = unicode;
+                    });
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
+                } else if (type === "set-page-size") {
+                    setPageSize({
+                        target,
+                        protyle: options.protyle,
+                        avID,
+                        nodeElement: options.blockElement
+                    });
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
+                } else if (type === "duplicate-view") {
+                    const id = Lute.NewNodeID();
+                    transaction(options.protyle, [{
+                        action: "duplicateAttrViewView",
+                        avID,
+                        previousID: data.viewID,
+                        id
+                    }], [{
+                        action: "removeAttrViewView",
+                        avID,
+                        id
+                    }]);
+                    avPanelElement.remove();
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
+                } else if (type === "delete-view") {
+                    if (data.views.length === 1) {
+                        removeBlock(options.protyle, options.blockElement, getEditorRange(options.blockElement));
+                    } else {
+                        transaction(options.protyle, [{
+                            action: "removeAttrViewView",
+                            avID,
+                            id: data.viewID
+                        }]);
+                    }
+                    avPanelElement.remove();
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
                 } else if (type === "update-icon") {
                     const rect = target.getBoundingClientRect();
                     openEmojiPanel("", "av", {
@@ -532,7 +653,8 @@ export const openMenuPanel = (options: {
                             data: target.dataset.icon,
                         }]);
                         target.innerHTML = unicode ? unicode2Emoji(unicode) : `<svg><use xlink:href="#${getColIconByType(target.dataset.colType as TAVCol)}"></use></svg>`;
-                        updateAttrViewCellAnimation(options.blockElement.querySelector(`.av__row--header .av__cell[data-col-id="${colId}"]`));
+                        updateAttrViewCellAnimation(options.blockElement.querySelector(`.av__row--header .av__cell[data-col-id="${colId}"]`), undefined, {icon: unicode});
+                        target.dataset.icon = unicode;
                     });
                     event.preventDefault();
                     event.stopPropagation();
@@ -600,6 +722,7 @@ export const openMenuPanel = (options: {
                         colId: target.parentElement.dataset.id
                     });
                     bindEditEvent({protyle: options.protyle, data, menuElement});
+                    setPosition(menuElement, tabRect.right - menuElement.clientWidth, tabRect.bottom, tabRect.height);
                     event.preventDefault();
                     event.stopPropagation();
                     break;
@@ -634,6 +757,22 @@ export const openMenuPanel = (options: {
                     event.preventDefault();
                     event.stopPropagation();
                     break;
+                } else if (type === "goSearchAV") {
+                    openSearchAV(avID, target);
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
+                } else if (type === "updateRelation") {
+                    updateRelation({
+                        protyle: options.protyle,
+                        avElement: avPanelElement,
+                        avID,
+                        colsData: data.view.columns,
+                        blockElement: options.blockElement,
+                    });
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
                 } else if (type === "goEditCol") {
                     const editMenuElement = hasClosestByClassName(target, "b3-menu");
                     if (editMenuElement) {
@@ -645,7 +784,7 @@ export const openMenuPanel = (options: {
                     event.stopPropagation();
                     break;
                 } else if (type === "hideCol") {
-                    const isEdit = menuElement.querySelector('[data-type="goProperties"]');
+                    const isEdit = menuElement.querySelector('[data-type="go-properties"]');
                     const colId = isEdit ? menuElement.querySelector(".b3-menu__item").getAttribute("data-col-id") : target.parentElement.getAttribute("data-id");
                     transaction(options.protyle, [{
                         action: "setAttrViewColHidden",
@@ -674,7 +813,7 @@ export const openMenuPanel = (options: {
                     event.stopPropagation();
                     break;
                 } else if (type === "showCol") {
-                    const isEdit = menuElement.querySelector('[data-type="goProperties"]');
+                    const isEdit = menuElement.querySelector('[data-type="go-properties"]');
                     const colId = isEdit ? menuElement.querySelector(".b3-menu__item").getAttribute("data-col-id") : target.parentElement.getAttribute("data-id");
                     transaction(options.protyle, [{
                         action: "setAttrViewColHidden",
@@ -738,6 +877,11 @@ export const openMenuPanel = (options: {
                     break;
                 } else if (type === "setColOption") {
                     setColOption(options.protyle, data, target, options.cellElements);
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
+                } else if (type === "setRelationCell") {
+                    setRelationCell(options.protyle, options.blockElement as HTMLElement, target, options.cellElements);
                     event.preventDefault();
                     event.stopPropagation();
                     break;
@@ -839,6 +983,35 @@ export const openMenuPanel = (options: {
                     event.preventDefault();
                     event.stopPropagation();
                     break;
+                } else if (type === "av-add") {
+                    window.siyuan.menus.menu.remove();
+                    addView(options.protyle, options.blockElement);
+                    avPanelElement.remove();
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
+                } else if (type === "av-view-edit") {
+                    if (target.parentElement.querySelector(".b3-chip--primary")) {
+                        openViewMenu({
+                            protyle: options.protyle,
+                            blockElement: options.blockElement as HTMLElement,
+                            element: target.parentElement
+                        });
+                    } else {
+                        options.blockElement.removeAttribute("data-render");
+                        avRender(options.blockElement, options.protyle, () => {
+                            openViewMenu({
+                                protyle: options.protyle,
+                                blockElement: options.blockElement as HTMLElement,
+                                element: target.parentElement
+                            });
+                            avPanelElement.querySelector(".b3-chip--primary").classList.remove("b3-chip--primary");
+                            target.parentElement.querySelector(".b3-chip").classList.add("b3-chip--primary");
+                        }, target.parentElement.dataset.id);
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    break;
                 }
                 target = target.parentElement;
             }
@@ -892,7 +1065,7 @@ ${hideHTML}`;
     }
     return `<div class="b3-menu__items">
 <button class="b3-menu__item" data-type="nobg">
-    <span class="block__icon" style="padding: 8px;margin-left: -4px;" data-type="goConfig">
+    <span class="block__icon" style="padding: 8px;margin-left: -4px;" data-type="go-config">
         <svg><use xlink:href="#iconLeft"></use></svg>
     </span>
     <span class="b3-menu__label ft__center">${window.siyuan.languages.attr}</span>
@@ -918,35 +1091,3 @@ ${hideHTML}
 </div>`;
 };
 
-const getConfigHTML = (data: IAVTable) => {
-    return `<div class="b3-menu__items">
-<button class="b3-menu__item" data-type="nobg">
-    <span class="b3-menu__label ft__center">${window.siyuan.languages.config}</span>
-</button>
-<button class="b3-menu__separator"></button>
-<button class="b3-menu__item" data-type="goProperties">
-    <svg class="b3-menu__icon"></svg>
-    <span class="b3-menu__label">${window.siyuan.languages.attr}</span>
-    <span class="b3-menu__accelerator">${data.columns.filter((item: IAVColumn) => !item.hidden).length}/${data.columns.length}</span>
-    <svg class="b3-menu__icon b3-menu__icon--arrow"><use xlink:href="#iconRight"></use></svg>
-</button>
-<button class="b3-menu__item" data-type="goFilters">
-    <svg class="b3-menu__icon"><use xlink:href="#iconFilter"></use></svg>
-    <span class="b3-menu__label">${window.siyuan.languages.filter}</span>
-    <span class="b3-menu__accelerator">${data.filters.length}</span>
-    <svg class="b3-menu__icon b3-menu__icon--arrow"><use xlink:href="#iconRight"></use></svg>
-</button>
-<button class="b3-menu__item" data-type="goSorts">
-    <svg class="b3-menu__icon"><use xlink:href="#iconSort"></use></svg>
-    <span class="b3-menu__label">${window.siyuan.languages.sort}</span>
-    <span class="b3-menu__accelerator">${data.sorts.length}</span>
-    <svg class="b3-menu__icon b3-menu__icon--arrow"><use xlink:href="#iconRight"></use></svg>
-</button>
-<button class="b3-menu__item">
-    <svg class="b3-menu__icon"></svg>
-    <span class="b3-menu__label">${window.siyuan.languages.pageCount}</span>
-    <span class="b3-menu__accelerator">50</span>
-    <svg class="b3-menu__icon b3-menu__icon--arrow"><use xlink:href="#iconRight"></use></svg>
-</button>
-</div>`;
-};

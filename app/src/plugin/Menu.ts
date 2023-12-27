@@ -38,10 +38,10 @@ export class Menu {
         if (this.isOpen) {
             return;
         }
-        this.menu.addSeparator(index);
+        return this.menu.addSeparator(index);
     }
 
-    open(options:IPosition) {
+    open(options: IPosition) {
         if (this.isOpen) {
             return;
         }
