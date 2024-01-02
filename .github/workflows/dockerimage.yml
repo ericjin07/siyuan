@@ -50,4 +50,14 @@ jobs:
       - name: Build the Docker image
         run: |
           docker buildx build --push --platform linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v8 -t ericjin07/siyuan:latest -t ericjin07/siyuan:v2.12.0 .
+      
+      - name: SSH into VPS and execute script
+        uses: appleboy/ssh-action@v1.0.2
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_PRIVATE_KEY }}
+          script: |
+            cd /home/eric/siyuan
+            ./start.sh  # Replace with your shell script name
 
