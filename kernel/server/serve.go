@@ -415,6 +415,8 @@ func serveWebSocket(ginServer *gin.Engine) {
 
 	ginServer.GET("/ws", func(c *gin.Context) {
 		if err := util.WebSocketServer.HandleRequest(c.Writer, c.Request); nil != err {
+			logging.LogErrorf("handle command failed Request: %s", c.Request)
+			logging.LogErrorf("handle command failed c: %s", c.Request)
 			logging.LogErrorf("handle command failed: %s", err)
 		}
 	})
