@@ -58,6 +58,8 @@ jobs:
           username: ${{ vars.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_PRIVATE_KEY }}
           script: |
-            cd /home/eric/siyuan
-            ./start.sh  # Replace with your shell script name
+            cd /home/eric/docker-env
+            docker compose down
+            sed -i 's/\(IMG_SIYUAN=.*:\)v[0-9.]\+/\1v2.12.1/' .env
+            docker compose up -d
 
