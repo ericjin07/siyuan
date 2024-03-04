@@ -26,6 +26,96 @@ import (
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
+func getAttributeViewPrimaryKeyValues(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	arg, ok := util.JsonArg(c, ret)
+	if !ok {
+		return
+	}
+
+	id := arg["id"].(string)
+	page := 1
+	pageArg := arg["page"]
+	if nil != pageArg {
+		page = int(pageArg.(float64))
+	}
+
+	pageSize := -1
+	pageSizeArg := arg["pageSize"]
+	if nil != pageSizeArg {
+		pageSize = int(pageSizeArg.(float64))
+	}
+
+	attributeViewName, rows, err := model.GetAttributeViewPrimaryKeyValues(id, page, pageSize)
+	if nil != err {
+		ret.Code = -1
+		ret.Msg = err.Error()
+		return
+	}
+
+	ret.Data = map[string]interface{}{
+		"name": attributeViewName,
+		"rows": rows,
+	}
+}
+
+func addAttributeViewValues(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	arg, _ := util.JsonArg(c, ret)
+	if nil == arg {
+		return
+	}
+
+	avID := arg["avID"].(string)
+	var srcIDs []string
+	for _, v := range arg["srcIDs"].([]interface{}) {
+		srcIDs = append(srcIDs, v.(string))
+	}
+	var previousID string
+	if nil != arg["previousID"] {
+		previousID = arg["previousID"].(string)
+	}
+	isDetached := arg["isDetached"].(bool)
+
+	err := model.AddAttributeViewBlock(nil, srcIDs, avID, previousID, isDetached)
+	if nil != err {
+		ret.Code = -1
+		ret.Msg = err.Error()
+		return
+	}
+
+	pushRefreshAttrView(avID)
+}
+
+func removeAttributeViewValues(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	arg, _ := util.JsonArg(c, ret)
+	if nil == arg {
+		return
+	}
+
+	avID := arg["avID"].(string)
+	var srcIDs []string
+	for _, v := range arg["srcIDs"].([]interface{}) {
+		srcIDs = append(srcIDs, v.(string))
+	}
+
+	err := model.RemoveAttributeViewBlock(srcIDs, avID)
+	if nil != err {
+		ret.Code = -1
+		ret.Msg = err.Error()
+		return
+	}
+
+	pushRefreshAttrView(avID)
+}
+
 func addAttributeViewCol(c *gin.Context) {
 	ret := gulu.Ret.NewResult()
 	defer c.JSON(http.StatusOK, ret)
@@ -48,6 +138,8 @@ func addAttributeViewCol(c *gin.Context) {
 		ret.Msg = err.Error()
 		return
 	}
+
+	pushRefreshAttrView(avID)
 }
 
 func removeAttributeViewCol(c *gin.Context) {
@@ -68,6 +160,8 @@ func removeAttributeViewCol(c *gin.Context) {
 		ret.Msg = err.Error()
 		return
 	}
+
+	pushRefreshAttrView(avID)
 }
 
 func sortAttributeViewCol(c *gin.Context) {
@@ -89,6 +183,8 @@ func sortAttributeViewCol(c *gin.Context) {
 		ret.Msg = err.Error()
 		return
 	}
+
+	pushRefreshAttrView(avID)
 }
 
 func getAttributeViewFilterSort(c *gin.Context) {
@@ -357,6 +453,11 @@ func setAttributeViewBlockAttr(c *gin.Context) {
 	cellID := arg["cellID"].(string)
 	value := arg["value"].(interface{})
 	blockAttributeViewKeys := model.UpdateAttributeViewCell(nil, avID, keyID, rowID, cellID, value)
-	util.BroadcastByType("protyle", "refreshAttributeView", 0, "", map[string]interface{}{"id": avID})
 	ret.Data = blockAttributeViewKeys
+
+	pushRefreshAttrView(avID)
+}
+
+func pushRefreshAttrView(avID string) {
+	util.BroadcastByType("protyle", "refreshAttributeView", 0, "", map[string]interface{}{"id": avID})
 }

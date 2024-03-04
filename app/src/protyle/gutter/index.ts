@@ -3,7 +3,7 @@ import {
     hasClosestByAttribute,
     hasClosestByClassName,
     hasClosestByMatchTag,
-    hasClosestByTag
+    hasClosestByTag, hasTopClosestByClassName
 } from "../util/hasClosest";
 import {getIconByType} from "../../editor/getIcon";
 import {enterBack, iframeMenu, setFold, tableMenu, videoMenu, zoomOut} from "../../menus/protyle";
@@ -46,6 +46,7 @@ import {avRender} from "../render/av/render";
 import {emitOpenMenu} from "../../plugin/EventBus";
 import {insertAttrViewBlockAnimation} from "../render/av/row";
 import {avContextmenu} from "../render/av/action";
+import {openSearchAV} from "../render/av/relation";
 
 export class Gutter {
     public element: HTMLElement;
@@ -311,7 +312,8 @@ export class Gutter {
                     window.siyuan.menus.menu.fullscreen();
                 } else {
                     window.siyuan.menus.menu.popup({x: gutterRect.left, y: gutterRect.bottom, isLeft: true});
-                    window.siyuan.menus.menu.element.setAttribute("data-from", hasClosestByClassName(protyle.element, "block__edit") ? "popover" : "app");
+                    const popoverElement = hasTopClosestByClassName(protyle.element, "block__popover", true);
+                    window.siyuan.menus.menu.element.setAttribute("data-from", popoverElement ? popoverElement.dataset.level + "popover" : "app");
                     focusByRange(protyle.toolbar.range);
                 }
             }
@@ -342,7 +344,8 @@ export class Gutter {
                 } else if (buttonElement.dataset.type !== "NodeAttributeViewRow") {
                     this.renderMenu(protyle, buttonElement);
                     window.siyuan.menus.menu.popup({x: gutterRect.left, y: gutterRect.bottom, isLeft: true});
-                    window.siyuan.menus.menu.element.setAttribute("data-from", hasClosestByClassName(protyle.element, "block__edit") ? "popover" : "app");
+                    const popoverElement = hasTopClosestByClassName(protyle.element, "block__popover", true);
+                    window.siyuan.menus.menu.element.setAttribute("data-from", popoverElement ? popoverElement.dataset.level + "popover" : "app");
                 }
             }
             event.preventDefault();
@@ -441,7 +444,7 @@ export class Gutter {
                         }], [{
                             action: "foldHeading",
                             id: itemId
-                        }]);
+                        }], options.protyle);
                         item.insertAdjacentHTML("afterend", response.data[0].doOperations[0].retData);
                     }
                 }
@@ -768,7 +771,7 @@ export class Gutter {
                     });
                     writeText(protyle.lute.BlockDOM2StdMd(html).trimEnd());
                     protyle.breadcrumb?.hide();
-                    removeBlock(protyle, selectsElement[0], getEditorRange(selectsElement[0]));
+                    removeBlock(protyle, selectsElement[0], getEditorRange(selectsElement[0]), "remove");
                 } else {
                     focusByRange(getEditorRange(selectsElement[0]));
                     document.execCommand("cut");
@@ -786,12 +789,35 @@ export class Gutter {
             }
         }).element);
         window.siyuan.menus.menu.append(new MenuItem({
+            label: window.siyuan.languages.addToDatabase,
+            icon: "iconDatabase",
+            click: () => {
+                openSearchAV("", selectsElement[0] as HTMLElement, (listItemElement) => {
+                    const sourceIds: string[] = [];
+                    selectsElement.forEach(item => {
+                        sourceIds.push(item.getAttribute("data-node-id"));
+                    });
+                    const avID = listItemElement.dataset.avId;
+                    transaction(protyle, [{
+                        action: "insertAttrViewBlock",
+                        avID,
+                        srcIDs: sourceIds,
+                        isDetached: false,
+                    }], [{
+                        action: "removeAttrViewBlock",
+                        srcIDs: sourceIds,
+                        avID,
+                    }]);
+                });
+            }
+        }).element);
+        window.siyuan.menus.menu.append(new MenuItem({
             label: window.siyuan.languages.delete,
             icon: "iconTrashcan",
             accelerator: "⌫",
             click: () => {
                 protyle.breadcrumb?.hide();
-                removeBlock(protyle, selectsElement[0], getEditorRange(selectsElement[0]));
+                removeBlock(protyle, selectsElement[0], getEditorRange(selectsElement[0]), "Backspace");
             }
         }).element);
 
@@ -1196,7 +1222,7 @@ export class Gutter {
                 click: () => {
                     if (isNotEditBlock(nodeElement)) {
                         writeText(protyle.lute.BlockDOM2StdMd(removeEmbed(nodeElement)).trimEnd());
-                        removeBlock(protyle, nodeElement, getEditorRange(nodeElement));
+                        removeBlock(protyle, nodeElement, getEditorRange(nodeElement), "remove");
                         protyle.breadcrumb?.hide();
                     } else {
                         focusByRange(getEditorRange(nodeElement));
@@ -1215,12 +1241,32 @@ export class Gutter {
                 }
             }).element);
             window.siyuan.menus.menu.append(new MenuItem({
+                label: window.siyuan.languages.addToDatabase,
+                icon: "iconDatabase",
+                click: () => {
+                    openSearchAV("", nodeElement as HTMLElement, (listItemElement) => {
+                        const sourceIds: string[] = [nodeElement.getAttribute("data-node-id")];
+                        const avID = listItemElement.dataset.avId;
+                        transaction(protyle, [{
+                            action: "insertAttrViewBlock",
+                            avID,
+                            srcIDs: sourceIds,
+                            isDetached: false,
+                        }], [{
+                            action: "removeAttrViewBlock",
+                            srcIDs: sourceIds,
+                            avID,
+                        }]);
+                    });
+                }
+            }).element);
+            window.siyuan.menus.menu.append(new MenuItem({
                 label: window.siyuan.languages.delete,
                 icon: "iconTrashcan",
                 accelerator: "⌫",
                 click: () => {
                     protyle.breadcrumb?.hide();
-                    removeBlock(protyle, nodeElement, getEditorRange(nodeElement));
+                    removeBlock(protyle, nodeElement, getEditorRange(nodeElement), "Backspace");
                 }
             }).element);
         }
@@ -1683,7 +1729,7 @@ export class Gutter {
             updateHTML = `${window.siyuan.languages.modifiedAt} ${dayjs(updateHTML).format("YYYY-MM-DD HH:mm:ss")}<br>`;
         }
         window.siyuan.menus.menu.append(new MenuItem({
-            iconHTML: Constants.ZWSP,
+            iconHTML: "",
             type: "readonly",
             label: `${updateHTML}${window.siyuan.languages.createdAt} ${dayjs(id.substr(0, 14)).format("YYYY-MM-DD HH:mm:ss")}`,
         }).element);
@@ -1936,7 +1982,7 @@ export class Gutter {
                     const rowElement = hasClosestByClassName(target, "av__row");
                     if (rowElement && !rowElement.classList.contains("av__row--header")) {
                         element = rowElement;
-                        html = `<button data-type="NodeAttributeViewRowMenu" data-node-id="${dataNodeId}" data-row-id="${rowElement.dataset.id}" class="ariaLabel" data-position="right" aria-label="${window.siyuan.languages.rowTip}"><svg><use xlink:href="#iconDrag"></use></svg><span ${protyle.disabled ? "" : 'draggable="true"'}></span></button>`;
+                        html = `<button data-type="NodeAttributeViewRowMenu" data-node-id="${dataNodeId}" data-row-id="${rowElement.dataset.id}" class="ariaLabel" data-position="right" aria-label="${window.siyuan.languages.rowTip}"><svg><use xlink:href="#iconDrag"></use></svg><span ${protyle.disabled ? "" : 'draggable="true" class="fn__grab"'}></span></button>`;
                         if (!protyle.disabled) {
                             html = `<button data-type="NodeAttributeViewRow" data-node-id="${dataNodeId}" data-row-id="${rowElement.dataset.id}" class="ariaLabel" data-position="right" aria-label="${isMac() ? window.siyuan.languages.addBelowAbove : window.siyuan.languages.addBelowAbove.replace("⌥", "Alt+")}"><svg><use xlink:href="#iconAdd"></use></svg></button>${html}`;
                         }

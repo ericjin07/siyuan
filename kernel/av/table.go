@@ -17,6 +17,7 @@
 package av
 
 import (
+	"bytes"
 	"math"
 	"sort"
 	"strconv"
@@ -210,8 +211,19 @@ func (value *Value) Compare(other *Value) int {
 		}
 	case KeyTypeRollup:
 		if nil != value.Rollup && nil != other.Rollup {
-			vContent := strings.TrimSpace(strings.Join(value.Relation.Contents, " "))
-			oContent := strings.TrimSpace(strings.Join(other.Relation.Contents, " "))
+			vContentBuf := bytes.Buffer{}
+			for _, c := range value.Rollup.Contents {
+				vContentBuf.WriteString(c.String())
+				vContentBuf.WriteByte(' ')
+			}
+			vContent := strings.TrimSpace(vContentBuf.String())
+			oContentBuf := bytes.Buffer{}
+			for _, c := range other.Rollup.Contents {
+				oContentBuf.WriteString(c.String())
+				oContentBuf.WriteByte(' ')
+			}
+			oContent := strings.TrimSpace(oContentBuf.String())
+
 			if util.IsNumeric(vContent) && util.IsNumeric(oContent) {
 				v1, _ := strconv.ParseFloat(vContent, 64)
 				v2, _ := strconv.ParseFloat(oContent, 64)
@@ -452,30 +464,44 @@ func (value *Value) compareOperator(other *Value, operator FilterOperator, attrV
 		}
 	}
 
-	if nil != value.MSelect && nil != other.MSelect {
+	if nil != value.MSelect {
+		if nil != other.MSelect {
+			switch operator {
+			case FilterOperatorIsEqual, FilterOperatorContains:
+				contains := false
+				for _, v := range value.MSelect {
+					for _, v2 := range other.MSelect {
+						if v.Content == v2.Content {
+							contains = true
+							break
+						}
+					}
+				}
+				return contains
+			case FilterOperatorIsNotEqual, FilterOperatorDoesNotContain:
+				contains := false
+				for _, v := range value.MSelect {
+					for _, v2 := range other.MSelect {
+						if v.Content == v2.Content {
+							contains = true
+							break
+						}
+					}
+				}
+				return !contains
+			case FilterOperatorIsEmpty:
+				return 0 == len(value.MSelect) || 1 == len(value.MSelect) && "" == value.MSelect[0].Content
+			case FilterOperatorIsNotEmpty:
+				return 0 != len(value.MSelect) && !(1 == len(value.MSelect) && "" == value.MSelect[0].Content)
+			}
+			return false
+		}
+
+		// 没有设置比较值
+
 		switch operator {
-		case FilterOperatorIsEqual, FilterOperatorContains:
-			contains := false
-			for _, v := range value.MSelect {
-				for _, v2 := range other.MSelect {
-					if v.Content == v2.Content {
-						contains = true
-						break
-					}
-				}
-			}
-			return contains
-		case FilterOperatorIsNotEqual, FilterOperatorDoesNotContain:
-			contains := false
-			for _, v := range value.MSelect {
-				for _, v2 := range other.MSelect {
-					if v.Content == v2.Content {
-						contains = true
-						break
-					}
-				}
-			}
-			return !contains
+		case FilterOperatorIsEqual, FilterOperatorIsNotEqual, FilterOperatorContains, FilterOperatorDoesNotContain:
+			return true
 		case FilterOperatorIsEmpty:
 			return 0 == len(value.MSelect) || 1 == len(value.MSelect) && "" == value.MSelect[0].Content
 		case FilterOperatorIsNotEmpty:
@@ -1272,50 +1298,54 @@ func (table *Table) calcColDate(col *TableColumn, colIndex int) {
 		}
 	case CalcOperatorEarliest:
 		earliest := int64(0)
-		var isNotTime bool
+		var isNotTime, hasEndDate bool
 		for _, row := range table.Rows {
 			if nil != row.Cells[colIndex] && nil != row.Cells[colIndex].Value && nil != row.Cells[colIndex].Value.Date && row.Cells[colIndex].Value.Date.IsNotEmpty {
 				if 0 == earliest || earliest > row.Cells[colIndex].Value.Date.Content {
 					earliest = row.Cells[colIndex].Value.Date.Content
 					isNotTime = row.Cells[colIndex].Value.Date.IsNotTime
+					hasEndDate = row.Cells[colIndex].Value.Date.HasEndDate
 				}
 			}
 		}
 		if 0 != earliest {
-			col.Calc.Result = &Value{Date: NewFormattedValueDate(earliest, 0, DateFormatNone, isNotTime)}
+			col.Calc.Result = &Value{Date: NewFormattedValueDate(earliest, 0, DateFormatNone, isNotTime, hasEndDate)}
 		}
 	case CalcOperatorLatest:
 		latest := int64(0)
-		var isNotTime bool
+		var isNotTime, hasEndDate bool
 		for _, row := range table.Rows {
 			if nil != row.Cells[colIndex] && nil != row.Cells[colIndex].Value && nil != row.Cells[colIndex].Value.Date && row.Cells[colIndex].Value.Date.IsNotEmpty {
 				if 0 == latest || latest < row.Cells[colIndex].Value.Date.Content {
 					latest = row.Cells[colIndex].Value.Date.Content
 					isNotTime = row.Cells[colIndex].Value.Date.IsNotTime
+					hasEndDate = row.Cells[colIndex].Value.Date.HasEndDate
 				}
 			}
 		}
 		if 0 != latest {
-			col.Calc.Result = &Value{Date: NewFormattedValueDate(latest, 0, DateFormatNone, isNotTime)}
+			col.Calc.Result = &Value{Date: NewFormattedValueDate(latest, 0, DateFormatNone, isNotTime, hasEndDate)}
 		}
 	case CalcOperatorRange:
 		earliest := int64(0)
 		latest := int64(0)
-		var isNotTime bool
+		var isNotTime, hasEndDate bool
 		for _, row := range table.Rows {
 			if nil != row.Cells[colIndex] && nil != row.Cells[colIndex].Value && nil != row.Cells[colIndex].Value.Date && row.Cells[colIndex].Value.Date.IsNotEmpty {
 				if 0 == earliest || earliest > row.Cells[colIndex].Value.Date.Content {
 					earliest = row.Cells[colIndex].Value.Date.Content
 					isNotTime = row.Cells[colIndex].Value.Date.IsNotTime
+					hasEndDate = row.Cells[colIndex].Value.Date.HasEndDate
 				}
 				if 0 == latest || latest < row.Cells[colIndex].Value.Date.Content {
 					latest = row.Cells[colIndex].Value.Date.Content
 					isNotTime = row.Cells[colIndex].Value.Date.IsNotTime
+					hasEndDate = row.Cells[colIndex].Value.Date.HasEndDate
 				}
 			}
 		}
 		if 0 != earliest && 0 != latest {
-			col.Calc.Result = &Value{Date: NewFormattedValueDate(earliest, latest, DateFormatDuration, isNotTime)}
+			col.Calc.Result = &Value{Date: NewFormattedValueDate(earliest, latest, DateFormatDuration, isNotTime, hasEndDate)}
 		}
 	}
 }

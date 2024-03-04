@@ -198,9 +198,9 @@ export const saveLayout = () => {
                 right: dockToJSON(window.siyuan.layout.rightDock),
             };
             layoutToJSON(window.siyuan.layout.layout, layoutJSON.layout, breakObj);
+            window.siyuan.config.uiLayout = layoutJSON;
         }
     }
-
     if (Object.keys(breakObj).length > 0 && saveCount < 10) {
         saveCount++;
         setTimeout(() => {
@@ -428,7 +428,7 @@ export const JSONToLayout = (app: App, isStart: boolean) => {
         if (!sessionStorage.getItem(Constants.LOCAL_SESSION_FIRSTLOAD)) {
             getAllTabs().forEach(item => {
                 if (item.headElement && !item.headElement.classList.contains("item--pin")) {
-                    item.parent.removeTab(item.id, false, false);
+                    item.parent.removeTab(item.id, false, false, false);
                 }
             });
             sessionStorage.setItem(Constants.LOCAL_SESSION_FIRSTLOAD, "true");
@@ -437,15 +437,12 @@ export const JSONToLayout = (app: App, isStart: boolean) => {
         if (isStart) {
             getAllTabs().forEach(item => {
                 if (item.headElement && !item.headElement.classList.contains("item--pin")) {
-                    item.parent.removeTab(item.id, false, false);
+                    item.parent.removeTab(item.id, false, false, false);
                 }
             });
         }
         /// #endif
     }
-    app.plugins.forEach(item => {
-        afterLoadPlugin(item);
-    });
     // 移除没有插件的 tab
     document.querySelectorAll('li[data-type="tab-header"]').forEach((item: HTMLElement) => {
         const initData = item.getAttribute("data-initdata");
@@ -463,7 +460,7 @@ export const JSONToLayout = (app: App, isStart: boolean) => {
                     const tabId = item.getAttribute("data-id");
                     const tab = getInstanceById(tabId) as Tab;
                     if (tab) {
-                        tab.parent.removeTab(tabId, false, false);
+                        tab.parent.removeTab(tabId, false, false, false);
                     }
                 }
             }
@@ -484,6 +481,11 @@ export const JSONToLayout = (app: App, isStart: boolean) => {
             tab.parent.switchTab(item, false, false, true, false);
         });
     }
+    // 需放在 tab.parent.switchTab 后，否则当前 tab 永远为最后一个
+    app.plugins.forEach(item => {
+        afterLoadPlugin(item);
+    });
+    saveLayout();
     resizeTopBar();
 };
 

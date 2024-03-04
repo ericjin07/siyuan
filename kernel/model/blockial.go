@@ -95,6 +95,64 @@ func SetBlockReminder(id string, timed string) (err error) {
 	return
 }
 
+func BatchSetBlockAttrs(blockAttrs []map[string]interface{}) (err error) {
+	if util.ReadOnly {
+		return
+	}
+
+	WaitForWritingFiles()
+	trees := map[string]*parse.Tree{}
+	for _, blockAttr := range blockAttrs {
+		id := blockAttr["id"].(string)
+		bt := treenode.GetBlockTree(id)
+		if nil == bt {
+			return errors.New(fmt.Sprintf(Conf.Language(15), id))
+		}
+
+		if nil == trees[bt.RootID] {
+			tree, e := loadTreeByBlockID(id)
+			if nil != e {
+				return e
+			}
+			trees[bt.RootID] = tree
+		}
+	}
+
+	var nodes []*ast.Node
+	for _, blockAttr := range blockAttrs {
+		id := blockAttr["id"].(string)
+		bt := treenode.GetBlockTree(id)
+		if nil == bt {
+			return errors.New(fmt.Sprintf(Conf.Language(15), id))
+		}
+		tree := trees[bt.RootID]
+		node := treenode.GetNodeInTree(tree, id)
+		if nil == node {
+			return errors.New(fmt.Sprintf(Conf.Language(15), id))
+		}
+
+		attrs := blockAttr["attrs"].(map[string]string)
+		oldAttrs, e := setNodeAttrs0(node, attrs)
+		if nil != e {
+			return e
+		}
+
+		cache.PutBlockIAL(node.ID, parse.IAL2Map(node.KramdownIAL))
+		pushBroadcastAttrTransactions(oldAttrs, node)
+		nodes = append(nodes, node)
+	}
+
+	for _, tree := range trees {
+		if err = indexWriteJSONQueue(tree); nil != err {
+			return
+		}
+	}
+
+	IncSync()
+	// 不做锚文本刷新
+	return
+}
+
 func SetBlockAttrs(id string, nameValues map[string]string) (err error) {
 	if util.ReadOnly {
 		return

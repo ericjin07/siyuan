@@ -54,7 +54,7 @@ type TOperation =
 type TBazaarType = "templates" | "icons" | "widgets" | "themes" | "plugins"
 type TCardType = "doc" | "notebook" | "all"
 type TEventBus = "ws-main" | "sync-start" | "sync-end" | "sync-fail" |
-    "click-blockicon" | "click-editorcontent" | "click-pdf" | "click-editortitleicon" |
+    "click-blockicon" | "click-editorcontent" | "click-pdf" | "click-editortitleicon" | "click-flashcard-action" |
     "open-noneditableblock" |
     "open-menu-blockref" | "open-menu-fileannotationref" | "open-menu-tag" | "open-menu-link" | "open-menu-image" |
     "open-menu-av" | "open-menu-content" | "open-menu-breadcrumbmore" | "open-menu-doctree" | "open-menu-inbox" |
@@ -147,7 +147,7 @@ interface Window {
     }
     mermaid: {
         initialize(options: any): void,
-        init(options: any, element: Element): void
+        render(id: string, text: string): { svg:string }
     };
     plantumlEncoder: {
         encode(options: string): string,
@@ -183,6 +183,8 @@ interface Window {
     hideKeyboardToolbar(): void
 
     openFileByURL(URL: string): boolean
+
+    destroyTheme(): Promise<void>
 }
 
 interface IPosition {
@@ -217,7 +219,7 @@ interface ICard {
     nextDues: IObject
 }
 
-interface ICardData  {
+interface ICardData {
     cards: ICard[],
     unreviewedCount: number
     unreviewedNewCardCount: number
@@ -317,6 +319,7 @@ interface IPdfAnno {
     mode: string,
     id?: string,
     coords?: number[]
+    ids?: string[]
 }
 
 interface IBackStack {
@@ -617,6 +620,7 @@ interface IEditor {
     rtl: boolean;
     readOnly: boolean;
     listLogicalOutdent: boolean;
+    listItemDotNumberClickFocus: boolean;
     spellcheck: boolean;
     onlySearchForDoc: boolean;
     katexMacros: string;
@@ -713,12 +717,15 @@ interface IConfig {
         superBlock: boolean
         heading: boolean
         deck: boolean
+        reviewMode: number
         requestRetention: number
         maximumInterval: number
         weights: string
     }
     ai: {
         openAI: {
+            apiProvider: string // OpenAI, Azure
+            apiUserAgent: string
             apiBaseURL: string
             apiKey: string
             apiModel: string

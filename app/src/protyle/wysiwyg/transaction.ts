@@ -722,7 +722,7 @@ export const onTransaction = (protyle: IProtyle, operation: IOperation, isUndo: 
         "updateAttrViewColOption", "updateAttrViewCell", "sortAttrViewRow", "sortAttrViewCol", "setAttrViewColHidden",
         "setAttrViewColWrap", "setAttrViewColWidth", "removeAttrViewColOption", "setAttrViewName", "setAttrViewFilters",
         "setAttrViewSorts", "setAttrViewColCalc", "removeAttrViewCol", "updateAttrViewColNumberFormat", "removeAttrViewBlock",
-        "replaceAttrViewBlock", "updateAttrViewColTemplate", "setAttrViewColPin", "addAttrViewView",
+        "replaceAttrViewBlock", "updateAttrViewColTemplate", "setAttrViewColPin", "addAttrViewView", "setAttrViewColIcon",
         "removeAttrViewView", "setAttrViewViewName", "setAttrViewViewIcon", "duplicateAttrViewView", "sortAttrViewView",
         "updateAttrViewColRelation", "setAttrViewPageSize", "updateAttrViewColRollup"].includes(operation.action)) {
         refreshAV(protyle, operation);
@@ -998,6 +998,9 @@ const updateRef = (protyle: IProtyle, id: string, index = 0) => {
 
 let transactionsTimeout: number;
 export const transaction = (protyle: IProtyle, doOperations: IOperation[], undoOperations?: IOperation[]) => {
+    if (doOperations.length === 0) {
+        return;
+    }
     if (!protyle) {
         // 文档书中点开属性->数据库后的变更操作
         fetchPost("/api/transactions", {
@@ -1027,9 +1030,9 @@ export const transaction = (protyle: IProtyle, doOperations: IOperation[], undoO
         protyle.updated = true;
 
         if (needDebounce) {
-            protyle.undo.replace(doOperations);
+            protyle.undo.replace(doOperations, protyle);
         } else {
-            protyle.undo.add(doOperations, undoOperations);
+            protyle.undo.add(doOperations, undoOperations, protyle);
         }
     }
     if (needDebounce) {

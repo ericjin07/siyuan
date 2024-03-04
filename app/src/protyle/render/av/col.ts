@@ -9,7 +9,7 @@ import {removeAttrViewColAnimation, updateAttrViewCellAnimation} from "./action"
 import {openEmojiPanel, unicode2Emoji} from "../../../emoji";
 import {focusBlock} from "../../util/selection";
 import {toggleUpdateRelationBtn} from "./relation";
-import {bindRollupEvent, getRollupHTML} from "./rollup";
+import {bindRollupData, getRollupHTML} from "./rollup";
 
 export const duplicateCol = (options: {
     protyle: IProtyle,
@@ -84,7 +84,8 @@ export const duplicateCol = (options: {
 export const getEditHTML = (options: {
     protyle: IProtyle,
     colId: string,
-    data: IAV
+    data: IAV,
+    isCustomAttr: boolean
 }) => {
     let colData: IAVColumn;
     options.data.view.columns.find((item) => {
@@ -94,7 +95,7 @@ export const getEditHTML = (options: {
         }
     });
     let html = `<button class="b3-menu__item" data-type="nobg" data-col-id="${options.colId}">
-    <span class="block__icon" style="padding: 8px;margin-left: -4px;" data-type="go-properties">
+    <span class="block__icon${options.isCustomAttr ? " fn__none" : ""}" style="padding: 8px;margin-left: -4px;" data-type="go-properties">
         <svg><use xlink:href="#iconLeft"></use></svg>
     </span>
     <span class="b3-menu__label ft__center">${window.siyuan.languages.edit}</span>
@@ -111,7 +112,7 @@ export const getEditHTML = (options: {
     <span class="b3-menu__accelerator" style="margin-left: 0">${getColNameByType(colData.type)}</span>
     <svg class="b3-menu__icon b3-menu__icon--small"><use xlink:href="#iconRight"></use></svg>
 </button>`;
-    if (colData.options && colData.options.length > 0) {
+    if (["mSelect", "select"].includes(colData.type) && colData.options && colData.options.length > 0) {
         html += `<button class="b3-menu__separator"></button>
 <button class="b3-menu__item">
     <svg class="b3-menu__icon" style=""><use xlink:href="#iconAdd"></use></svg>
@@ -119,7 +120,7 @@ export const getEditHTML = (options: {
 </button>`;
         colData.options.forEach(item => {
             html += `<button class="b3-menu__item${html ? "" : " b3-menu__item--current"}" draggable="true" data-name="${item.name}" data-color="${item.color}">
-    <svg class="b3-menu__icon"><use xlink:href="#iconDrag"></use></svg>
+    <svg class="b3-menu__icon fn__grab"><use xlink:href="#iconDrag"></use></svg>
     <div class="fn__flex-1">
         <span class="b3-chip" style="background-color:var(--b3-font-background${item.color});color:var(--b3-font-color${item.color})">
             <span class="fn__ellipsis">${item.name}</span>
@@ -207,7 +208,8 @@ export const getEditHTML = (options: {
 export const bindEditEvent = (options: {
     protyle: IProtyle,
     data: IAV,
-    menuElement: HTMLElement
+    menuElement: HTMLElement,
+    isCustomAttr: boolean
 }) => {
     const avID = options.data.id;
     const colId = options.menuElement.querySelector(".b3-menu__item").getAttribute("data-col-id");
@@ -316,8 +318,18 @@ export const bindEditEvent = (options: {
                     avID,
                     data: addOptionElement.value
                 }]);
-                options.menuElement.innerHTML = getEditHTML({protyle: options.protyle, colId, data: options.data});
-                bindEditEvent({protyle: options.protyle, menuElement: options.menuElement, data: options.data});
+                options.menuElement.innerHTML = getEditHTML({
+                    protyle: options.protyle,
+                    colId,
+                    data: options.data,
+                    isCustomAttr: options.isCustomAttr
+                });
+                bindEditEvent({
+                    protyle: options.protyle,
+                    menuElement: options.menuElement,
+                    data: options.data,
+                    isCustomAttr: options.isCustomAttr
+                });
                 (options.menuElement.querySelector('[data-type="addOption"]') as HTMLInputElement).focus();
             }
         });
@@ -350,7 +362,7 @@ export const bindEditEvent = (options: {
             toggleUpdateRelationBtn(options.menuElement, avID);
         }
     }
-    bindRollupEvent(options);
+    bindRollupData(options);
 };
 
 export const getColNameByType = (type: TAVCol) => {
@@ -430,24 +442,49 @@ const addAttrViewColAnimation = (options: {
     if (!options.blockElement) {
         return;
     }
-    options.blockElement.querySelectorAll(".av__row").forEach((item, index) => {
-        let previousElement;
-        if (options.previousID) {
-            previousElement = item.querySelector(`[data-col-id="${options.previousID}"]`);
-        } else {
-            previousElement = item.lastElementChild.previousElementSibling;
-        }
-        let html = "";
-        if (index === 0) {
-            html = `<div class="av__cell av__cell--header" draggable="true" data-icon="${options.icon || ""}" data-col-id="${options.id}" data-dtype="${options.type}" data-wrap="false" style="width: 200px;">
+    if (options.blockElement.classList.contains("av")) {
+        options.blockElement.querySelectorAll(".av__row").forEach((item, index) => {
+            let previousElement;
+            if (options.previousID) {
+                previousElement = item.querySelector(`[data-col-id="${options.previousID}"]`);
+            } else {
+                previousElement = item.lastElementChild.previousElementSibling;
+            }
+            let html = "";
+            if (index === 0) {
+                // av__pulse 用于检测是否新增，和 render 中 isPulse 配合弹出菜单
+                html = `<div class="av__cell av__cell--header" draggable="true" data-icon="${options.icon || ""}" data-col-id="${options.id}" data-dtype="${options.type}" data-wrap="false" style="width: 200px;">
     ${options.icon ? unicode2Emoji(options.icon, "av__cellheadericon", true) : `<svg class="av__cellheadericon"><use xlink:href="#${getColIconByType(options.type)}"></use></svg>`}
     <span class="av__celltext fn__flex-1">${options.name}</span>
-    <div class="av__widthdrag"></div>
+    <div class="av__widthdrag av__pulse"></div>
 </div>`;
-        } else {
-            html = '<div class="av__cell" style="width: 200px"><span class="av__pulse"></span></div>';
+            } else {
+                html = '<div class="av__cell" style="width: 200px"><span class="av__pulse"></span></div>';
+            }
+            previousElement.insertAdjacentHTML("afterend", html);
+        });
+    } else {
+        const nodeId= options.blockElement.getAttribute("data-node-id");
+        options.blockElement.querySelector(".fn__hr").insertAdjacentHTML("beforebegin", `<div class="block__icons av__row" data-id="${nodeId}" data-col-id="${options.id}">
+    <div class="block__icon" draggable="true"><svg><use xlink:href="#iconDrag"></use></svg></div>
+    <div class="block__logo ariaLabel" data-type="editCol" data-position="parentW" aria-label="${getColNameByType(options.type)}">
+        <svg class="block__logoicon"><use xlink:href="#${getColIconByType(options.type)}"></use></svg>
+        <span>${getColNameByType(options.type)}</span>
+    </div>
+    <div data-col-id="${options.id}" data-block-id="${nodeId}" data-type="${options.type}" data-options="[]" class="fn__flex-1 fn__flex">
+        <div class="fn__flex-1"></div>
+    </div>
+</div>`);
+    }
+    openMenuPanel({
+        protyle: options.protyle,
+        blockElement: options.blockElement,
+        type: "edit",
+        colId: options.id,
+        editData: {
+            previousID: options.previousID,
+            colData: genColDataByType(options.type, options.id),
         }
-        previousElement.insertAdjacentHTML("afterend", html);
     });
     window.siyuan.menus.menu.remove();
 };
@@ -1182,4 +1219,21 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
         }
     });
     return menu;
+};
+
+const genColDataByType = (type: TAVCol, id: string) => {
+    const colData: IAVColumn = {
+        hidden: false,
+        icon: "",
+        id,
+        name: getColNameByType(type),
+        numberFormat: "",
+        pin: false,
+        template: "",
+        type,
+        width: "",
+        wrap: false,
+        calc: null
+    };
+    return colData;
 };

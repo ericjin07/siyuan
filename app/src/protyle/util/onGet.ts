@@ -24,6 +24,7 @@ export const onGet = (options: {
     protyle: IProtyle,
     action?: string[],
     scrollAttr?: IScrollAttr
+    updateReadonly?: boolean
     afterCB?: () => void
 }) => {
     if (!options.action) {
@@ -56,7 +57,7 @@ export const onGet = (options: {
             return;
         }
     }
-    hideElements(["gutter"], options.protyle);
+    hideElements(["gutterOnly"], options.protyle);
     options.protyle.block.parentID = options.data.data.parentID;
     options.protyle.block.parent2ID = options.data.data.parent2ID;
     options.protyle.block.rootID = options.data.data.rootID;
@@ -79,6 +80,7 @@ export const onGet = (options: {
             expand: options.data.data.isBacklinkExpand,
             action: options.action,
             scrollAttr: options.scrollAttr,
+            updateReadonly: options.updateReadonly,
             isSyncing: options.data.data.isSyncing,
             afterCB: options.afterCB,
         }, options.protyle);
@@ -104,6 +106,7 @@ export const onGet = (options: {
             expand: options.data.data.isBacklinkExpand,
             action: options.action,
             scrollAttr: options.scrollAttr,
+            updateReadonly: options.updateReadonly,
             isSyncing: options.data.data.isSyncing,
             afterCB: options.afterCB,
         }, options.protyle);
@@ -116,6 +119,7 @@ const setHTML = (options: {
     action?: string[],
     isSyncing: boolean,
     expand: boolean,
+    updateReadonly?: boolean,
     scrollAttr?: IScrollAttr
     afterCB?: () => void
 }, protyle: IProtyle) => {
@@ -124,7 +128,7 @@ const setHTML = (options: {
     }
     protyle.block.showAll = options.action.includes(Constants.CB_GET_ALL);
     const REMOVED_OVER_HEIGHT = protyle.contentElement.clientHeight * 8;
-    const isUpdate = protyle.wysiwyg.element.innerHTML !== "";
+    const updateReadonly = typeof options.updateReadonly === "undefined" ? protyle.wysiwyg.element.innerHTML === "" : options.updateReadonly;
     if (options.action.includes(Constants.CB_GET_APPEND)) {
         // 动态加载移除
         if (!protyle.wysiwyg.element.querySelector(".protyle-wysiwyg--select") && !protyle.scroll.keepLazyLoad && protyle.contentElement.scrollHeight > REMOVED_OVER_HEIGHT) {
@@ -199,7 +203,7 @@ const setHTML = (options: {
             protyle.breadcrumb.element.nextElementSibling.textContent = "";
         }
         protyle.element.removeAttribute("disabled-forever");
-        setReadonlyByConfig(protyle, isUpdate);
+        setReadonlyByConfig(protyle, updateReadonly);
     }
 
     focusElementById(protyle, options.action, options.scrollAttr);
@@ -292,6 +296,12 @@ export const disabledProtyle = (protyle: IProtyle) => {
     protyle.wysiwyg.element.querySelectorAll(".protyle-icons--show").forEach(item => {
         item.classList.remove("protyle-icons--show");
     });
+    protyle.wysiwyg.element.querySelectorAll(".render-node .protyle-action__edit").forEach(item => {
+        item.classList.add("fn__none");
+        if (item.classList.contains("protyle-icon--first")) {
+            item.nextElementSibling?.classList.add("protyle-icon--first");
+        }
+    });
     protyle.wysiwyg.element.style.userSelect = "text";
     protyle.wysiwyg.element.setAttribute("contenteditable", "false");
     protyle.wysiwyg.element.querySelectorAll('[contenteditable="true"][spellcheck]').forEach(item => {
@@ -310,6 +320,13 @@ export const disabledProtyle = (protyle: IProtyle) => {
     if (protyle.breadcrumb) {
         protyle.breadcrumb.element.parentElement.querySelector('[data-type="readonly"] use').setAttribute("xlink:href", "#iconLock");
         protyle.breadcrumb.element.parentElement.querySelector('[data-type="readonly"]').setAttribute("aria-label", window.siyuan.config.editor.readOnly ? window.siyuan.languages.tempUnlock : window.siyuan.languages.unlockEdit);
+        const undoElement = protyle.breadcrumb.element.parentElement.querySelector('[data-type="undo"]');
+        if (undoElement && !undoElement.classList.contains("fn__none")) {
+            undoElement.classList.add("fn__none");
+            protyle.breadcrumb.element.parentElement.querySelector('[data-type="redo"]').classList.add("fn__none");
+            protyle.breadcrumb.element.parentElement.querySelector('[data-type="indent"]').classList.add("fn__none");
+            protyle.breadcrumb.element.parentElement.querySelector('[data-type="outdent"]').classList.add("fn__none");
+        }
     }
     hideTooltip();
 };
@@ -336,6 +353,13 @@ export const enableProtyle = (protyle: IProtyle) => {
     if (protyle.background) {
         protyle.background.element.classList.add("protyle-background--enable");
     }
+
+    protyle.wysiwyg.element.querySelectorAll(".render-node .protyle-action__edit").forEach(item => {
+        item.classList.remove("fn__none");
+        if (item.classList.contains("protyle-icon--first")) {
+            item.nextElementSibling?.classList.remove("protyle-icon--first");
+        }
+    });
     protyle.wysiwyg.element.querySelectorAll('[contenteditable="false"][spellcheck]').forEach(item => {
         if (!hasClosestByClassName(item, "protyle-wysiwyg__embed")) {
             item.setAttribute("contenteditable", "true");
@@ -353,6 +377,13 @@ export const enableProtyle = (protyle: IProtyle) => {
     if (protyle.breadcrumb) {
         protyle.breadcrumb.element.parentElement.querySelector('[data-type="readonly"] use').setAttribute("xlink:href", "#iconUnlock");
         protyle.breadcrumb.element.parentElement.querySelector('[data-type="readonly"]').setAttribute("aria-label", window.siyuan.config.editor.readOnly ? window.siyuan.languages.cancelTempUnlock : window.siyuan.languages.lockEdit);
+        const undoElement = protyle.breadcrumb.element.parentElement.querySelector('[data-type="undo"]');
+        if (undoElement && undoElement.classList.contains("fn__none")) {
+            undoElement.classList.remove("fn__none");
+            protyle.breadcrumb.element.parentElement.querySelector('[data-type="redo"]').classList.remove("fn__none");
+            protyle.breadcrumb.element.parentElement.querySelector('[data-type="indent"]').classList.remove("fn__none");
+            protyle.breadcrumb.element.parentElement.querySelector('[data-type="outdent"]').classList.remove("fn__none");
+        }
     }
     hideTooltip();
 };
@@ -432,9 +463,9 @@ const focusElementById = (protyle: IProtyle, action: string[], scrollAttr?: IScr
     }
 };
 
-export const setReadonlyByConfig = (protyle: IProtyle, isUpdate: boolean) => {
+export const setReadonlyByConfig = (protyle: IProtyle, updateReadonly: boolean) => {
     let readOnly = window.siyuan.config.readonly ? "true" : "false";
-    if (isUpdate) {
+    if (!updateReadonly) {
         readOnly = protyle.disabled ? "true" : "false";
     } else if (readOnly === "false") {
         readOnly = window.siyuan.config.editor.readOnly ? "true" : "false";

@@ -444,7 +444,7 @@ const initKernel = (workspace, port, lang) => {
         const kernelName = "win32" === process.platform ? "SiYuan-Kernel.exe" : "SiYuan-Kernel";
         const kernelPath = path.join(appDir, "kernel", kernelName);
         if (!fs.existsSync(kernelPath)) {
-            showErrorWindow("⚠️ 内核文件丢失 Kernel is missing", "<div>内核可执行文件丢失，请重新安装思源，并将思源加入杀毒软件信任列表。</div><div>The kernel binary is not found, please reinstall SiYuan and add SiYuan into the trust list of your antivirus software.</div>");
+            showErrorWindow("⚠️ 内核程序丢失 Kernel program is missing", `<div>内核程序丢失，请重新安装思源，并将思源内核程序加入杀毒软件信任列表。</div><div>The kernel program is not found, please reinstall SiYuan and add SiYuan Kernel prgram into the trust list of your antivirus software.</div><div><i>${kernelPath}</i></div>`);
             bootWindow.destroy();
             resolve(false);
             return;
@@ -540,34 +540,28 @@ const initKernel = (workspace, port, lang) => {
             });
         }
 
-        let gotVersion = false;
         let apiData;
         let count = 0;
         writeLog("checking kernel version");
-        while (!gotVersion && count < 15) {
+        for (; ;) {
             try {
                 const apiResult = await net.fetch(getServer() + "/api/system/version");
                 apiData = await apiResult.json();
-                gotVersion = true;
                 bootWindow.setResizable(false);
                 bootWindow.loadURL(getServer() + "/appearance/boot/index.html");
                 bootWindow.show();
+                break;
             } catch (e) {
                 writeLog("get kernel version failed: " + e.message);
-                await sleep(200);
-            } finally {
-                count++;
-                if (14 < count) {
+                if (14 < ++count) {
                     writeLog("get kernel ver failed");
                     showErrorWindow("⚠️ 获取内核服务端口失败 Failed to get kernel serve port", "<div>获取内核服务端口失败，请确保程序拥有网络权限并不受防火墙和杀毒软件阻止。</div><div>Failed to get kernel serve port, please make sure the program has network permissions and is not blocked by firewalls and antivirus software.</div>");
                     bootWindow.destroy();
                     resolve(false);
+                    return;
                 }
+                await sleep(200);
             }
-        }
-
-        if (!gotVersion) {
-            return;
         }
 
         if (0 === apiData.code) {
@@ -813,7 +807,7 @@ app.whenReady().then(() => {
                 currentWindow.setAlwaysOnTop(false);
                 break;
             case "setAlwaysOnTopTrue":
-                currentWindow.setAlwaysOnTop(true, "pop-up-menu");
+                currentWindow.setAlwaysOnTop(true);
                 break;
             case "clearCache":
                 event.sender.session.clearCache();
@@ -869,8 +863,8 @@ app.whenReady().then(() => {
             parent: getWindowByContentId(event.sender.id),
             modal: true,
             show: true,
-            width: 1032,
-            height: 725,
+            width: Math.floor(screen.getPrimaryDisplay().size.width * 0.8),
+            height: Math.floor(screen.getPrimaryDisplay().workAreaSize.height * 0.8),
             resizable: false,
             frame: "darwin" === process.platform,
             icon: path.join(appDir, "stage", "icon-large.png"),

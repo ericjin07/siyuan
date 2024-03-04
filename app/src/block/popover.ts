@@ -1,5 +1,9 @@
 import {BlockPanel} from "./Panel";
-import {hasClosestBlock, hasClosestByAttribute, hasClosestByClassName} from "../protyle/util/hasClosest";
+import {
+    hasClosestBlock,
+    hasClosestByAttribute,
+    hasClosestByClassName,
+} from "../protyle/util/hasClosest";
 import {fetchSyncPost} from "../util/fetch";
 import {hideTooltip, showTooltip} from "../dialog/tooltip";
 import {getIdFromSYProtocol} from "../util/pathName";
@@ -174,23 +178,32 @@ const hidePopover = (event: MouseEvent & { path: HTMLElement[] }) => {
                 }
             }
         });
+        const menuLevel = parseInt(window.siyuan.menus.menu.element.dataset.from);
         if (blockElement) {
-            for (let i = 0; i < window.siyuan.blockPanels.length; i++) {
+            for (let i = window.siyuan.blockPanels.length - 1; i >= 0; i--) {
                 const item = window.siyuan.blockPanels[i];
+                const itemLevel = parseInt(item.element.getAttribute("data-level"));
                 if ((item.targetElement || typeof item.x === "number") &&
-                    parseInt(item.element.getAttribute("data-level")) > (maxEditLevels[item.element.getAttribute("data-oid")] || 0) &&
+                    itemLevel > (maxEditLevels[item.element.getAttribute("data-oid")] || 0) &&
                     item.element.getAttribute("data-pin") === "false" &&
-                    parseInt(item.element.getAttribute("data-level")) > parseInt(blockElement.getAttribute("data-level"))) {
-                    item.destroy();
-                    i--;
+                    itemLevel > parseInt(blockElement.getAttribute("data-level"))) {
+                    if (menuLevel && menuLevel >= itemLevel) {
+                        // 有 gutter 菜单时不隐藏
+                    } else {
+                        item.destroy();
+                    }
                 }
             }
         } else {
-            for (let i = 0; i < window.siyuan.blockPanels.length; i++) {
+            for (let i = window.siyuan.blockPanels.length - 1; i >= 0; i--) {
                 const item = window.siyuan.blockPanels[i];
+                const itemLevel = parseInt(item.element.getAttribute("data-level"));
                 if ((item.targetElement || typeof item.x === "number") && item.element.getAttribute("data-pin") === "false") {
-                    item.destroy();
-                    i--;
+                    if (menuLevel && menuLevel >= itemLevel) {
+                        // 有 gutter 菜单时不隐藏
+                    } else {
+                        item.destroy();
+                    }
                 }
             }
         }
@@ -198,7 +211,7 @@ const hidePopover = (event: MouseEvent & { path: HTMLElement[] }) => {
 };
 
 const getTarget = (event: MouseEvent & { target: HTMLElement }, aElement: false | HTMLElement) => {
-    if (hasClosestByClassName(event.target, "history__repo", true)) {
+    if (window.siyuan.config.editor.floatWindowMode === 2 || hasClosestByClassName(event.target, "history__repo", true)) {
         return false;
     }
     popoverTargetElement = hasClosestByAttribute(event.target, "data-type", "block-ref") as HTMLElement ||
@@ -278,15 +291,23 @@ export const showPopover = async (app: App, showRef = false) => {
             // 编辑器中的引用数
             targetId = popoverTargetElement.parentElement.parentElement.getAttribute("data-node-id");
         } else if (popoverTargetElement.classList.contains("pdf__rect")) {
-            targetId = popoverTargetElement.getAttribute("data-node-id");
-            url = "/api/block/getRefIDsByFileAnnotationID";
+            const relationIds = popoverTargetElement.getAttribute("data-relations");
+            if (relationIds) {
+                ids = relationIds.split(",");
+                url = "";
+            } else {
+                targetId = popoverTargetElement.getAttribute("data-node-id");
+                url = "/api/block/getRefIDsByFileAnnotationID";
+            }
         } else if (!targetId) {
             // 文件树中的引用数
             targetId = popoverTargetElement.parentElement.getAttribute("data-node-id");
         }
-        const postResponse = await fetchSyncPost(url, {id: targetId});
-        ids = postResponse.data.refIDs;
-        defIds = postResponse.data.defIDs;
+        if (url) {
+            const postResponse = await fetchSyncPost(url, {id: targetId});
+            ids = postResponse.data.refIDs;
+            defIds = postResponse.data.defIDs;
+        }
     }
 
     let hasPin = false;

@@ -190,7 +190,10 @@ func syncData(exit, byHand bool) {
 	if exit {
 		ExitSyncSucc = 0
 		logging.LogInfof("sync before exit")
-		util.PushMsg(Conf.Language(81), 1000*60*15)
+		msgId := util.PushMsg(Conf.Language(81), 1000*60*15)
+		defer func() {
+			util.PushClearMsg(msgId)
+		}()
 	}
 
 	now := util.CurrentTimeMillis()
@@ -279,6 +282,13 @@ func incReindex(upserts, removes []string) (upsertRootIDs, removeRootIDs []strin
 	util.IncBootProgress(3, "Sync reindexing...")
 	removeRootIDs = removeIndexes(removes) // 先执行 remove，否则移动文档时 upsert 会被忽略，导致未被索引
 	upsertRootIDs = upsertIndexes(upserts)
+
+	if 1 > len(removeRootIDs) {
+		removeRootIDs = []string{}
+	}
+	if 1 > len(upsertRootIDs) {
+		upsertRootIDs = []string{}
+	}
 	return
 }
 
@@ -300,6 +310,10 @@ func removeIndexes(removeFilePaths []string) (removeRootIDs []string) {
 			treenode.RemoveBlockTreesByRootID(block.RootID)
 			sql.RemoveTreeQueue(block.BoxID, block.RootID)
 		}
+	}
+
+	if 1 > len(removeRootIDs) {
+		removeRootIDs = []string{}
 	}
 	return
 }
@@ -335,6 +349,10 @@ func upsertIndexes(upsertFilePaths []string) (upsertRootIDs []string) {
 		treenode.IndexBlockTree(tree)
 		sql.UpsertTreeQueue(tree)
 		upsertRootIDs = append(upsertRootIDs, tree.Root.ID)
+	}
+
+	if 1 > len(upsertRootIDs) {
+		upsertRootIDs = []string{}
 	}
 	return
 }

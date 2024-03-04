@@ -6,6 +6,16 @@ declare const NODE_ENV: string;
 const _SIYUAN_VERSION = SIYUAN_VERSION;
 const _NODE_ENV = NODE_ENV;
 
+const altNumber = navigator.platform.toUpperCase().indexOf("MAC") > -1 ? "⌃" : "⌥";
+
+const getFunctionKey = () => {
+    const fData: { [key: number]: string } = {};
+    for (let i = 1; i <= 32; i++) {
+        fData[i + 111] = "F" + i;
+    }
+    return fData;
+};
+
 export abstract class Constants {
     public static readonly SIYUAN_VERSION: string = _SIYUAN_VERSION;
     public static readonly NODE_ENV: string = _NODE_ENV;
@@ -103,6 +113,7 @@ export abstract class Constants {
     public static readonly LOCAL_FILEPOSITION = "local-fileposition";
     public static readonly LOCAL_DIALOGPOSITION = "local-dialogposition";
     public static readonly LOCAL_SESSION_FIRSTLOAD = "local-session-firstload";
+    public static readonly LOCAL_OUTLINE = "local-outline";
 
     // dialog
     public static readonly DIALOG_OPENCARD = "dialog-opencard";
@@ -177,7 +188,7 @@ export abstract class Constants {
     };
     public static readonly QUICK_DECK_ID = "20230218211946-2kw8jgx";
 
-    public static readonly KEYCODELIST: { [key: number]: string } = {
+    public static KEYCODELIST: { [key: number]: string } = Object.assign(getFunctionKey(), {
         8: "⌫",
         9: "⇥",
         13: "↩",
@@ -253,18 +264,6 @@ export abstract class Constants {
         109: "-",
         110: ".",
         111: "/",
-        112: "F1",
-        113: "F2",
-        114: "F3",
-        115: "F4",
-        116: "F5",
-        117: "F6",
-        118: "F7",
-        119: "F8",
-        120: "F9",
-        121: "F10",
-        122: "F11",
-        123: "F12",
         144: "NumLock",
         145: "ScrollLock",
         182: "MyComputer",
@@ -280,11 +279,11 @@ export abstract class Constants {
         220: "\\",
         221: "]",
         222: "'",
-    };
+    });
     // 冲突不使用 "⌘S/Q"
     // "⌘", "⇧", "⌥", "⌃"
     // "⌘A", "⌘X", "⌘C", "⌘V", "⌘-", "⌘=", "⌘0", "⇧⌘V", "⌘/", "⇧↑", "⇧↓", "⇧→", "⇧←", "⇧⇥", "⌃D", "⇧⌘→", "⇧⌘←",
-    // "⌘Home", "⌘End", "⇧↩", "↩", "PageUp", "PageDown", "⌫", "⌦" 不可自定义
+    // "⌘Home", "⌘End", "⇧↩", "↩", "PageUp", "PageDown", "⌫", "⌦", "Escape" 不可自定义
     public static readonly SIYUAN_KEYMAP: IKeymap = {
         general: {
             mainMenu: {default: "⌥\\", custom: "⌥\\"},
@@ -301,16 +300,16 @@ export abstract class Constants {
             stickSearch: {default: "⇧⌘F", custom: "⇧⌘F"},
             replace: {default: "⌘R", custom: "⌘R"},
             closeTab: {default: "⌘W", custom: "⌘W"},
-            fileTree: {default: "⌥1", custom: "⌥1"},
-            outline: {default: "⌥2", custom: "⌥2"},
-            bookmark: {default: "⌥3", custom: "⌥3"},
-            tag: {default: "⌥4", custom: "⌥4"},
-            dailyNote: {default: "⌥5", custom: "⌥5"},
-            inbox: {default: "⌥6", custom: "⌥6"},
-            backlinks: {default: "⌥7", custom: "⌥7"},
-            graphView: {default: "⌥8", custom: "⌥8"},
-            globalGraph: {default: "⌥9", custom: "⌥9"},
-            riffCard: {default: "⌥0", custom: "⌥0"},
+            fileTree: {default: altNumber + "1", custom: altNumber + "1"},
+            outline: {default: altNumber + "2", custom: altNumber + "2"},
+            bookmark: {default: altNumber + "3", custom: altNumber + "3"},
+            tag: {default: altNumber + "4", custom: altNumber + "4"},
+            dailyNote: {default: altNumber + "5", custom: altNumber + "5"},
+            inbox: {default: altNumber + "6", custom: altNumber + "6"},
+            backlinks: {default: altNumber + "7", custom: altNumber + "7"},
+            graphView: {default: altNumber + "8", custom: altNumber + "8"},
+            globalGraph: {default: altNumber + "9", custom: altNumber + "9"},
+            riffCard: {default: altNumber + "0", custom: altNumber + "0"},
             config: {default: "⌥P", custom: "⌥P"},
             dataHistory: {default: "⌥H", custom: "⌥H"},
             toggleWin: {default: "⌥M", custom: "⌥M"},
