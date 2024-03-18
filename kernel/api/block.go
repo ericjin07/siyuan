@@ -62,6 +62,11 @@ func transferBlockRef(c *gin.Context) {
 		return
 	}
 
+	reloadUI := true
+	if nil != arg["reloadUI"] {
+		reloadUI = arg["reloadUI"].(bool)
+	}
+
 	var refIDs []string
 	if nil != arg["refIDs"] {
 		for _, refID := range arg["refIDs"].([]interface{}) {
@@ -75,6 +80,10 @@ func transferBlockRef(c *gin.Context) {
 		ret.Msg = err.Error()
 		ret.Data = map[string]interface{}{"closeTimeout": 7000}
 		return
+	}
+
+	if reloadUI {
+		util.ReloadUI()
 	}
 }
 
@@ -438,7 +447,7 @@ func getBlockInfo(c *gin.Context) {
 
 	id := arg["id"].(string)
 
-	tree, err := model.LoadTreeByID(id)
+	tree, err := model.LoadTreeByBlockID(id)
 	if errors.Is(err, model.ErrIndexing) {
 		ret.Code = 3
 		ret.Msg = model.Conf.Language(56)

@@ -153,6 +153,7 @@ func ListInvalidBlockRefs(page, pageSize int) (ret []*Block, matchedBlockCount, 
 	invalidBlockIDs = gulu.Str.RemoveDuplicatedElem(invalidBlockIDs)
 
 	sort.Strings(invalidBlockIDs)
+	allInvalidBlockIDs := invalidBlockIDs
 
 	start := (page - 1) * pageSize
 	end := page * pageSize
@@ -162,17 +163,26 @@ func ListInvalidBlockRefs(page, pageSize int) (ret []*Block, matchedBlockCount, 
 	invalidBlockIDs = invalidBlockIDs[start:end]
 
 	sqlBlocks := sql.GetBlocks(invalidBlockIDs)
+	var tmp []*sql.Block
+	for _, sqlBlock := range sqlBlocks {
+		if nil != sqlBlock {
+			tmp = append(tmp, sqlBlock)
+		}
+	}
+	sqlBlocks = tmp
+
 	ret = fromSQLBlocks(&sqlBlocks, "", 36)
 	if 1 > len(ret) {
 		ret = []*Block{}
 	}
-	matchedBlockCount = len(ret)
+	matchedBlockCount = len(allInvalidBlockIDs)
 	rootCount := map[string]bool{}
-	for _, block := range ret {
-		if nil == block {
+	for _, id := range allInvalidBlockIDs {
+		bt := treenode.GetBlockTree(id)
+		if nil == bt {
 			continue
 		}
-		rootCount[block.RootID] = true
+		rootCount[bt.RootID] = true
 	}
 	matchedRootCount = len(rootCount)
 	pageCount = (matchedBlockCount + pageSize - 1) / pageSize
@@ -256,7 +266,7 @@ func buildEmbedBlock(embedBlockID string, excludeIDs []string, headingMode int, 
 	count := 0
 	for _, sb := range sqlBlocks {
 		if nil == trees[sb.RootID] {
-			tree, _ := loadTreeByBlockID(sb.RootID)
+			tree, _ := LoadTreeByBlockID(sb.RootID)
 			if nil == tree {
 				continue
 			}
@@ -314,7 +324,7 @@ func SearchRefBlock(id, rootID, keyword string, beforeLen int, isSquareBrackets 
 		for _, ref := range refs {
 			tree := cachedTrees[ref.DefBlockRootID]
 			if nil == tree {
-				tree, _ = loadTreeByBlockID(ref.DefBlockRootID)
+				tree, _ = LoadTreeByBlockID(ref.DefBlockRootID)
 			}
 			if nil == tree {
 				continue
@@ -350,7 +360,7 @@ func SearchRefBlock(id, rootID, keyword string, beforeLen int, isSquareBrackets 
 	for _, b := range ret {
 		tree := cachedTrees[b.RootID]
 		if nil == tree {
-			tree, _ = loadTreeByBlockID(b.RootID)
+			tree, _ = LoadTreeByBlockID(b.RootID)
 		}
 		if nil == tree {
 			continue
@@ -363,7 +373,7 @@ func SearchRefBlock(id, rootID, keyword string, beforeLen int, isSquareBrackets 
 			// `((` 引用候选中排除当前块的父块 https://github.com/siyuan-note/siyuan/issues/4538
 			tree := cachedTrees[b.RootID]
 			if nil == tree {
-				tree, _ = loadTreeByBlockID(b.RootID)
+				tree, _ = LoadTreeByBlockID(b.RootID)
 				cachedTrees[b.RootID] = tree
 			}
 			if nil != tree {
@@ -456,7 +466,7 @@ func FindReplace(keyword, replacement string, replaceTypes map[string]bool, ids 
 			continue
 		}
 
-		tree, _ = loadTreeByBlockID(id)
+		tree, _ = LoadTreeByBlockID(id)
 		if nil == tree {
 			continue
 		}
@@ -810,7 +820,7 @@ func FullTextSearchBlock(query string, boxes, paths []string, types map[string]b
 			if _, ok := rootMap[b.RootID]; !ok {
 				rootMap[b.RootID] = true
 				rootIDs = append(rootIDs, b.RootID)
-				tree, _ := loadTreeByBlockID(b.RootID)
+				tree, _ := LoadTreeByBlockID(b.RootID)
 				if nil == tree {
 					continue
 				}

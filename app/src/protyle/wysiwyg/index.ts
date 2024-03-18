@@ -412,6 +412,7 @@ export class WYSIWYG {
                     return;
                 }
                 const avId = nodeElement.getAttribute("data-av-id");
+                const blockID = nodeElement.dataset.nodeId;
                 const dragElement = target.parentElement;
                 const oldWidth = dragElement.clientWidth;
                 const dragColId = dragElement.getAttribute("data-col-id");
@@ -439,12 +440,14 @@ export class WYSIWYG {
                         action: "setAttrViewColWidth",
                         id: dragColId,
                         avID: avId,
-                        data: newWidth
+                        data: newWidth,
+                        blockID
                     }], [{
                         action: "setAttrViewColWidth",
                         id: dragColId,
                         avID: avId,
-                        data: oldWidth + "px"
+                        data: oldWidth + "px",
+                        blockID
                     }]);
                 };
                 this.preventClick = true;
@@ -874,7 +877,11 @@ export class WYSIWYG {
                 let firstBlockElement = hasClosestBlock(firstElement);
                 if (moveEvent.clientY > y) {
                     if (!startFirstElement) {
-                        startFirstElement = firstElement;
+                        // 向上选择导致滚动条滚动到顶部再向下选择至 > y 时，firstBlockElement 为 undefined https://ld246.com/article/1705233964097
+                        if (!firstBlockElement) {
+                            firstBlockElement = protyle.wysiwyg.element.firstElementChild as HTMLElement;
+                        }
+                        startFirstElement = firstBlockElement;
                     }
                 } else if (!firstBlockElement &&
                     // https://github.com/siyuan-note/siyuan/issues/7580
@@ -2029,6 +2036,26 @@ export class WYSIWYG {
                 /// #endif
                 return;
             }
+            /// #if MOBILE
+            // https://github.com/siyuan-note/siyuan/issues/10513
+            const virtualRefElement = hasClosestByAttribute(event.target, "data-type", "virtual-block-ref");
+            if (virtualRefElement) {
+                const blockElement = hasClosestBlock(virtualRefElement);
+                if (blockElement) {
+                    fetchPost("/api/block/getBlockDefIDsByRefText", {
+                        anchor: virtualRefElement.textContent,
+                        excludeIDs: [blockElement.getAttribute("data-node-id")]
+                    }, (response) => {
+                        checkFold(response.data[0], (zoomIn) => {
+                            openMobileFileById(protyle.app, response.data[0], zoomIn ? [Constants.CB_GET_ALL, Constants.CB_GET_HL] : [Constants.CB_GET_HL, Constants.CB_GET_CONTEXT, Constants.CB_GET_ROOTSCROLL]);
+                            activeBlur();
+                            hideKeyboardToolbar();
+                        });
+                    });
+                }
+                return;
+            }
+            /// #endif
 
             const fileElement = hasClosestByAttribute(event.target, "data-type", "file-annotation-ref");
             if (fileElement && range.toString() === "") {

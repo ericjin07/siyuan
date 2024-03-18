@@ -18,12 +18,12 @@ package av
 
 import (
 	"bytes"
+	"github.com/siyuan-note/siyuan/kernel/util"
 	"math"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/siyuan-note/siyuan/kernel/util"
+	"time"
 )
 
 // LayoutTable 描述了表格布局的结构。
@@ -83,40 +83,62 @@ const (
 )
 
 func (value *Value) Compare(other *Value) int {
-	if nil == value {
-		return -1
-	}
-	if nil == other {
-		return 1
-	}
-
 	switch value.Type {
 	case KeyTypeBlock:
 		if nil != value.Block && nil != other.Block {
-			return strings.Compare(value.Block.Content, other.Block.Content)
+			ret := strings.Compare(value.Block.Content, other.Block.Content)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypeText:
 		if nil != value.Text && nil != other.Text {
-			return strings.Compare(value.Text.Content, other.Text.Content)
+			ret := strings.Compare(value.Text.Content, other.Text.Content)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypeNumber:
 		if nil != value.Number && nil != other.Number {
-			if value.Number.Content > other.Number.Content {
-				return 1
-			} else if value.Number.Content < other.Number.Content {
-				return -1
+			if value.Number.IsNotEmpty {
+				if !other.Number.IsNotEmpty {
+					return 1
+				}
+
+				if value.Number.Content > other.Number.Content {
+					return 1
+				} else if value.Number.Content < other.Number.Content {
+					return -1
+				} else {
+					return int(value.CreatedAt - other.CreatedAt)
+				}
 			} else {
-				return 0
+				if other.Number.IsNotEmpty {
+					return -1
+				}
+				return int(value.CreatedAt - other.CreatedAt)
 			}
 		}
 	case KeyTypeDate:
 		if nil != value.Date && nil != other.Date {
-			if value.Date.Content > other.Date.Content {
-				return 1
-			} else if value.Date.Content < other.Date.Content {
-				return -1
+			if value.Date.IsNotEmpty {
+				if !other.Date.IsNotEmpty {
+					return 1
+				}
+				if value.Date.Content > other.Date.Content {
+					return 1
+				} else if value.Date.Content < other.Date.Content {
+					return -1
+				} else {
+					return int(value.CreatedAt - other.CreatedAt)
+				}
 			} else {
-				return 0
+				if other.Date.IsNotEmpty {
+					return -1
+				}
+				return int(value.CreatedAt - other.CreatedAt)
 			}
 		}
 	case KeyTypeCreated:
@@ -126,7 +148,7 @@ func (value *Value) Compare(other *Value) int {
 			} else if value.Created.Content < other.Created.Content {
 				return -1
 			} else {
-				return 0
+				return int(value.CreatedAt - other.CreatedAt)
 			}
 		}
 	case KeyTypeUpdated:
@@ -136,7 +158,7 @@ func (value *Value) Compare(other *Value) int {
 			} else if value.Updated.Content < other.Updated.Content {
 				return -1
 			} else {
-				return 0
+				return int(value.CreatedAt - other.CreatedAt)
 			}
 		}
 	case KeyTypeSelect, KeyTypeMSelect:
@@ -149,19 +171,35 @@ func (value *Value) Compare(other *Value) int {
 			for _, v := range other.MSelect {
 				v2 += v.Content
 			}
-			return strings.Compare(v1, v2)
+			ret := strings.Compare(v1, v2)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypeURL:
 		if nil != value.URL && nil != other.URL {
-			return strings.Compare(value.URL.Content, other.URL.Content)
+			ret := strings.Compare(value.URL.Content, other.URL.Content)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypeEmail:
 		if nil != value.Email && nil != other.Email {
-			return strings.Compare(value.Email.Content, other.Email.Content)
+			ret := strings.Compare(value.Email.Content, other.Email.Content)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypePhone:
 		if nil != value.Phone && nil != other.Phone {
-			return strings.Compare(value.Phone.Content, other.Phone.Content)
+			ret := strings.Compare(value.Phone.Content, other.Phone.Content)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypeMAsset:
 		if nil != value.MAsset && nil != other.MAsset {
@@ -173,7 +211,11 @@ func (value *Value) Compare(other *Value) int {
 			for _, v := range other.MAsset {
 				v2 += v.Content
 			}
-			return strings.Compare(v1, v2)
+			ret := strings.Compare(v1, v2)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypeTemplate:
 		if nil != value.Template && nil != other.Template {
@@ -185,13 +227,16 @@ func (value *Value) Compare(other *Value) int {
 				if v1 > v2 {
 					return 1
 				}
-
 				if v1 < v2 {
 					return -1
 				}
-				return 0
+				return int(value.CreatedAt - other.CreatedAt)
 			}
-			return strings.Compare(value.Template.Content, other.Template.Content)
+			ret := strings.Compare(value.Template.Content, other.Template.Content)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypeCheckbox:
 		if nil != value.Checkbox && nil != other.Checkbox {
@@ -201,13 +246,40 @@ func (value *Value) Compare(other *Value) int {
 			if !value.Checkbox.Checked && other.Checkbox.Checked {
 				return -1
 			}
-			return 0
+			return int(value.CreatedAt - other.CreatedAt)
 		}
 	case KeyTypeRelation:
 		if nil != value.Relation && nil != other.Relation {
-			vContent := strings.TrimSpace(strings.Join(value.Relation.Contents, " "))
-			oContent := strings.TrimSpace(strings.Join(other.Relation.Contents, " "))
-			return strings.Compare(vContent, oContent)
+			vContentBuf := bytes.Buffer{}
+			for _, c := range value.Relation.Contents {
+				vContentBuf.WriteString(c.String())
+				vContentBuf.WriteByte(' ')
+			}
+			vContent := strings.TrimSpace(vContentBuf.String())
+			oContentBuf := bytes.Buffer{}
+			for _, c := range other.Relation.Contents {
+				oContentBuf.WriteString(c.String())
+				oContentBuf.WriteByte(' ')
+			}
+			oContent := strings.TrimSpace(oContentBuf.String())
+
+			if util.IsNumeric(vContent) && util.IsNumeric(oContent) {
+				v1, _ := strconv.ParseFloat(vContent, 64)
+				v2, _ := strconv.ParseFloat(oContent, 64)
+				if v1 > v2 {
+					return 1
+				}
+
+				if v1 < v2 {
+					return -1
+				}
+				return int(value.CreatedAt - other.CreatedAt)
+			}
+			ret := strings.Compare(vContent, oContent)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	case KeyTypeRollup:
 		if nil != value.Rollup && nil != other.Rollup {
@@ -230,25 +302,40 @@ func (value *Value) Compare(other *Value) int {
 				if v1 > v2 {
 					return 1
 				}
-
 				if v1 < v2 {
 					return -1
 				}
-				return 0
+				return int(value.CreatedAt - other.CreatedAt)
 			}
-			return strings.Compare(vContent, oContent)
+			ret := strings.Compare(vContent, oContent)
+			if 0 == ret {
+				ret = int(value.CreatedAt - other.CreatedAt)
+			}
+			return ret
 		}
 	}
-	return 0
+	return int(value.CreatedAt - other.CreatedAt)
 }
 
-func (value *Value) CompareOperator(other *Value, operator FilterOperator, attrView *AttributeView, rowID string) bool {
-	if nil != value.Rollup && nil != other.Rollup {
-		rollupKey, _ := attrView.GetKey(value.KeyID)
-		if nil == rollupKey {
+func (value *Value) Filter(filter *ViewFilter, attrView *AttributeView, rowID string) bool {
+	if nil == filter || (nil == filter.Value && nil == filter.RelativeDate) {
+		return true
+	}
+
+	if nil != filter.Value && value.Type != filter.Value.Type {
+		// 由于字段类型被用户编辑过导致和过滤器值类型不匹配，该情况下不过滤
+		return true
+	}
+
+	if nil != value.Rollup && KeyTypeRollup == value.Type && nil != filter && nil != filter.Value && KeyTypeRollup == filter.Value.Type &&
+		nil != filter.Value.Rollup && 0 < len(filter.Value.Rollup.Contents) {
+		// 单独处理汇总类型的比较
+		key, _ := attrView.GetKey(value.KeyID)
+		if nil == key {
 			return false
 		}
-		relKey, _ := attrView.GetKey(rollupKey.Rollup.RelationKeyID)
+
+		relKey, _ := attrView.GetKey(key.Rollup.RelationKeyID)
 		if nil == relKey {
 			return false
 		}
@@ -264,213 +351,301 @@ func (value *Value) CompareOperator(other *Value, operator FilterOperator, attrV
 		}
 
 		for _, blockID := range relVal.Relation.BlockIDs {
-			destVal := destAv.GetValue(rollupKey.Rollup.KeyID, blockID)
+			destVal := destAv.GetValue(key.Rollup.KeyID, blockID)
 			if nil == destVal {
 				continue
 			}
 
-			if destVal.compareOperator(other, operator, attrView) {
+			if destVal.filter(filter.Value.Rollup.Contents[0], filter.RelativeDate, filter.RelativeDate2, filter.Operator) {
 				return true
 			}
 		}
 		return false
 	}
 
-	return value.compareOperator(other, operator, attrView)
+	if nil != value.Relation && KeyTypeRelation == value.Type && 0 < len(value.Relation.Contents) && nil != filter && nil != filter.Value && KeyTypeRelation == filter.Value.Type &&
+		nil != filter.Value.Relation && 0 < len(filter.Value.Relation.BlockIDs) {
+		// 单独处理关联类型的比较
+		for _, relationValue := range value.Relation.Contents {
+			filterValue := &Value{Type: KeyTypeBlock, Block: &ValueBlock{Content: filter.Value.Relation.BlockIDs[0]}}
+			if relationValue.filter(filterValue, filter.RelativeDate, filter.RelativeDate2, filter.Operator) {
+				return true
+			}
+		}
+		return false
+	}
+
+	return value.filter(filter.Value, filter.RelativeDate, filter.RelativeDate2, filter.Operator)
 }
 
-func (value *Value) compareOperator(other *Value, operator FilterOperator, attrView *AttributeView) bool {
-	if nil == other {
-		return true
-	}
-
-	if nil != value.Block && nil != other.Block {
-		switch operator {
-		case FilterOperatorIsEqual:
-			return value.Block.Content == other.Block.Content
-		case FilterOperatorIsNotEqual:
-			return value.Block.Content != other.Block.Content
-		case FilterOperatorContains:
-			return strings.Contains(value.Block.Content, other.Block.Content)
-		case FilterOperatorDoesNotContain:
-			return !strings.Contains(value.Block.Content, other.Block.Content)
-		case FilterOperatorStartsWith:
-			return strings.HasPrefix(value.Block.Content, other.Block.Content)
-		case FilterOperatorEndsWith:
-			return strings.HasSuffix(value.Block.Content, other.Block.Content)
-		case FilterOperatorIsEmpty:
-			return "" == strings.TrimSpace(value.Block.Content)
-		case FilterOperatorIsNotEmpty:
-			return "" != strings.TrimSpace(value.Block.Content)
+func (value *Value) filter(other *Value, relativeDate, relativeDate2 *RelativeDate, operator FilterOperator) bool {
+	switch value.Type {
+	case KeyTypeBlock:
+		if nil != value.Block && nil != other && nil != other.Block {
+			switch operator {
+			case FilterOperatorIsEqual:
+				return value.Block.Content == other.Block.Content
+			case FilterOperatorIsNotEqual:
+				return value.Block.Content != other.Block.Content
+			case FilterOperatorContains:
+				return strings.Contains(value.Block.Content, other.Block.Content)
+			case FilterOperatorDoesNotContain:
+				return !strings.Contains(value.Block.Content, other.Block.Content)
+			case FilterOperatorStartsWith:
+				return strings.HasPrefix(value.Block.Content, other.Block.Content)
+			case FilterOperatorEndsWith:
+				return strings.HasSuffix(value.Block.Content, other.Block.Content)
+			case FilterOperatorIsEmpty:
+				return "" == strings.TrimSpace(value.Block.Content)
+			case FilterOperatorIsNotEmpty:
+				return "" != strings.TrimSpace(value.Block.Content)
+			}
 		}
-	}
-
-	if nil != value.Text && nil != other.Text {
-		switch operator {
-		case FilterOperatorIsEqual:
-			if "" == strings.TrimSpace(other.Text.Content) {
-				return true
+	case KeyTypeText:
+		if nil != value.Text && nil != other && nil != other.Text {
+			switch operator {
+			case FilterOperatorIsEqual:
+				if "" == strings.TrimSpace(other.Text.Content) {
+					return true
+				}
+				return value.Text.Content == other.Text.Content
+			case FilterOperatorIsNotEqual:
+				if "" == strings.TrimSpace(other.Text.Content) {
+					return true
+				}
+				return value.Text.Content != other.Text.Content
+			case FilterOperatorContains:
+				if "" == strings.TrimSpace(other.Text.Content) {
+					return true
+				}
+				return strings.Contains(value.Text.Content, other.Text.Content)
+			case FilterOperatorDoesNotContain:
+				if "" == strings.TrimSpace(other.Text.Content) {
+					return true
+				}
+				return !strings.Contains(value.Text.Content, other.Text.Content)
+			case FilterOperatorStartsWith:
+				if "" == strings.TrimSpace(other.Text.Content) {
+					return true
+				}
+				return strings.HasPrefix(value.Text.Content, other.Text.Content)
+			case FilterOperatorEndsWith:
+				if "" == strings.TrimSpace(other.Text.Content) {
+					return true
+				}
+				return strings.HasSuffix(value.Text.Content, other.Text.Content)
+			case FilterOperatorIsEmpty:
+				return "" == strings.TrimSpace(value.Text.Content)
+			case FilterOperatorIsNotEmpty:
+				return "" != strings.TrimSpace(value.Text.Content)
 			}
-			return value.Text.Content == other.Text.Content
-		case FilterOperatorIsNotEqual:
-			if "" == strings.TrimSpace(other.Text.Content) {
-				return true
-			}
-			return value.Text.Content != other.Text.Content
-		case FilterOperatorContains:
-			if "" == strings.TrimSpace(other.Text.Content) {
-				return true
-			}
-			return strings.Contains(value.Text.Content, other.Text.Content)
-		case FilterOperatorDoesNotContain:
-			if "" == strings.TrimSpace(other.Text.Content) {
-				return true
-			}
-			return !strings.Contains(value.Text.Content, other.Text.Content)
-		case FilterOperatorStartsWith:
-			if "" == strings.TrimSpace(other.Text.Content) {
-				return true
-			}
-			return strings.HasPrefix(value.Text.Content, other.Text.Content)
-		case FilterOperatorEndsWith:
-			if "" == strings.TrimSpace(other.Text.Content) {
-				return true
-			}
-			return strings.HasSuffix(value.Text.Content, other.Text.Content)
-		case FilterOperatorIsEmpty:
-			return "" == strings.TrimSpace(value.Text.Content)
-		case FilterOperatorIsNotEmpty:
-			return "" != strings.TrimSpace(value.Text.Content)
 		}
-	}
-
-	if nil != value.Number && nil != other.Number {
-		switch operator {
-		case FilterOperatorIsEqual:
-			if !other.Number.IsNotEmpty {
-				return true
+	case KeyTypeNumber:
+		if nil != value.Number && nil != other && nil != other.Number {
+			switch operator {
+			case FilterOperatorIsEqual:
+				if !other.Number.IsNotEmpty {
+					return true
+				}
+				return value.Number.Content == other.Number.Content
+			case FilterOperatorIsNotEqual:
+				if !other.Number.IsNotEmpty {
+					return true
+				}
+				return value.Number.Content != other.Number.Content
+			case FilterOperatorIsGreater:
+				return value.Number.Content > other.Number.Content
+			case FilterOperatorIsGreaterOrEqual:
+				return value.Number.Content >= other.Number.Content
+			case FilterOperatorIsLess:
+				return value.Number.Content < other.Number.Content
+			case FilterOperatorIsLessOrEqual:
+				return value.Number.Content <= other.Number.Content
+			case FilterOperatorIsEmpty:
+				return !value.Number.IsNotEmpty
+			case FilterOperatorIsNotEmpty:
+				return value.Number.IsNotEmpty
 			}
-			return value.Number.Content == other.Number.Content
-		case FilterOperatorIsNotEqual:
-			if !other.Number.IsNotEmpty {
-				return true
-			}
-			return value.Number.Content != other.Number.Content
-		case FilterOperatorIsGreater:
-			return value.Number.Content > other.Number.Content
-		case FilterOperatorIsGreaterOrEqual:
-			return value.Number.Content >= other.Number.Content
-		case FilterOperatorIsLess:
-			return value.Number.Content < other.Number.Content
-		case FilterOperatorIsLessOrEqual:
-			return value.Number.Content <= other.Number.Content
-		case FilterOperatorIsEmpty:
-			return !value.Number.IsNotEmpty
-		case FilterOperatorIsNotEmpty:
-			return value.Number.IsNotEmpty
 		}
-	}
+	case KeyTypeDate:
+		if nil != value.Date {
+			if nil != relativeDate {
+				// 使用相对时间比较
 
-	if nil != value.Date && nil != other.Date {
-		switch operator {
-		case FilterOperatorIsEqual:
-			if !other.Date.IsNotEmpty {
+				count := relativeDate.Count
+				unit := relativeDate.Unit
+				direction := relativeDate.Direction
+				relativeTimeStart, relativeTimeEnd := calcRelativeTimeRegion(count, unit, direction)
+				_, relativeTimeEnd2 := calcRelativeTimeRegion(relativeDate2.Count, relativeDate2.Unit, relativeDate2.Direction)
+				return filterTime(value.Date.Content, value.Date.IsNotEmpty, relativeTimeStart, relativeTimeEnd, relativeTimeEnd2, operator)
+			} else { // 使用具体时间比较
+				if nil == other.Date {
+					return true
+				}
+
+				otherTime := time.UnixMilli(other.Date.Content)
+				otherStart := time.Date(otherTime.Year(), otherTime.Month(), otherTime.Day(), 0, 0, 0, 0, otherTime.Location())
+				otherEnd := time.Date(otherTime.Year(), otherTime.Month(), otherTime.Day(), 23, 59, 59, 999999999, otherTime.Location())
+				return filterTime(value.Date.Content, value.Date.IsNotEmpty, otherStart, otherEnd, time.Now(), operator)
+			}
+		}
+	case KeyTypeCreated:
+		if nil != value.Created {
+			if nil != relativeDate {
+				// 使用相对时间比较
+
+				count := relativeDate.Count
+				unit := relativeDate.Unit
+				direction := relativeDate.Direction
+				relativeTimeStart, relativeTimeEnd := calcRelativeTimeRegion(count, unit, direction)
+				return filterTime(value.Created.Content, true, relativeTimeStart, relativeTimeEnd, time.Now(), operator)
+			} else { // 使用具体时间比较
+				if nil == other.Created {
+					return true
+				}
+
+				otherTime := time.UnixMilli(other.Created.Content)
+				otherStart := time.Date(otherTime.Year(), otherTime.Month(), otherTime.Day(), 0, 0, 0, 0, otherTime.Location())
+				otherEnd := time.Date(otherTime.Year(), otherTime.Month(), otherTime.Day(), 23, 59, 59, 999999999, otherTime.Location())
+				return filterTime(value.Created.Content, value.Created.IsNotEmpty, otherStart, otherEnd, time.Now(), operator)
+			}
+		}
+	case KeyTypeUpdated:
+		if nil != value.Updated {
+			if nil != relativeDate {
+				// 使用相对时间比较
+
+				count := relativeDate.Count
+				unit := relativeDate.Unit
+				direction := relativeDate.Direction
+				relativeTimeStart, relativeTimeEnd := calcRelativeTimeRegion(count, unit, direction)
+				return filterTime(value.Updated.Content, true, relativeTimeStart, relativeTimeEnd, time.Now(), operator)
+			} else { // 使用具体时间比较
+				if nil == other.Updated {
+					return true
+				}
+
+				otherTime := time.UnixMilli(other.Updated.Content)
+				otherStart := time.Date(otherTime.Year(), otherTime.Month(), otherTime.Day(), 0, 0, 0, 0, otherTime.Location())
+				otherEnd := time.Date(otherTime.Year(), otherTime.Month(), otherTime.Day(), 23, 59, 59, 999999999, otherTime.Location())
+				return filterTime(value.Updated.Content, value.Updated.IsNotEmpty, otherStart, otherEnd, time.Now(), operator)
+			}
+		}
+	case KeyTypeSelect, KeyTypeMSelect:
+		if nil != value.MSelect {
+			if nil != other && nil != other.MSelect {
+				switch operator {
+				case FilterOperatorIsEqual, FilterOperatorContains:
+					contains := false
+					for _, v := range value.MSelect {
+						for _, v2 := range other.MSelect {
+							if v.Content == v2.Content {
+								contains = true
+								break
+							}
+						}
+					}
+					return contains
+				case FilterOperatorIsNotEqual, FilterOperatorDoesNotContain:
+					contains := false
+					for _, v := range value.MSelect {
+						for _, v2 := range other.MSelect {
+							if v.Content == v2.Content {
+								contains = true
+								break
+							}
+						}
+					}
+					return !contains
+				case FilterOperatorIsEmpty:
+					return 0 == len(value.MSelect) || 1 == len(value.MSelect) && "" == value.MSelect[0].Content
+				case FilterOperatorIsNotEmpty:
+					return 0 != len(value.MSelect) && !(1 == len(value.MSelect) && "" == value.MSelect[0].Content)
+				}
+				return false
+			}
+
+			// 没有设置比较值
+
+			switch operator {
+			case FilterOperatorIsEqual, FilterOperatorIsNotEqual, FilterOperatorContains, FilterOperatorDoesNotContain:
 				return true
+			case FilterOperatorIsEmpty:
+				return 0 == len(value.MSelect) || 1 == len(value.MSelect) && "" == value.MSelect[0].Content
+			case FilterOperatorIsNotEmpty:
+				return 0 != len(value.MSelect) && !(1 == len(value.MSelect) && "" == value.MSelect[0].Content)
 			}
-			return value.Date.Content == other.Date.Content
-		case FilterOperatorIsNotEqual:
-			if !other.Date.IsNotEmpty {
-				return true
+		}
+	case KeyTypeURL:
+		if nil != value.URL && nil != other && nil != other.URL {
+			switch operator {
+			case FilterOperatorIsEqual:
+				return value.URL.Content == other.URL.Content
+			case FilterOperatorIsNotEqual:
+				return value.URL.Content != other.URL.Content
+			case FilterOperatorContains:
+				return strings.Contains(value.URL.Content, other.URL.Content)
+			case FilterOperatorDoesNotContain:
+				return !strings.Contains(value.URL.Content, other.URL.Content)
+			case FilterOperatorStartsWith:
+				return strings.HasPrefix(value.URL.Content, other.URL.Content)
+			case FilterOperatorEndsWith:
+				return strings.HasSuffix(value.URL.Content, other.URL.Content)
+			case FilterOperatorIsEmpty:
+				return "" == strings.TrimSpace(value.URL.Content)
+			case FilterOperatorIsNotEmpty:
+				return "" != strings.TrimSpace(value.URL.Content)
 			}
-			return value.Date.Content != other.Date.Content
-		case FilterOperatorIsGreater:
-			return value.Date.Content > other.Date.Content
-		case FilterOperatorIsGreaterOrEqual:
-			return value.Date.Content >= other.Date.Content
-		case FilterOperatorIsLess:
-			return value.Date.Content < other.Date.Content
-		case FilterOperatorIsLessOrEqual:
-			return value.Date.Content <= other.Date.Content
-		case FilterOperatorIsBetween:
-			start := value.Date.Content >= other.Date.Content
-			end := value.Date.Content <= other.Date.Content2
-			if value.Date.HasEndDate {
-				end = value.Date.Content2 <= other.Date.Content2
+		}
+	case KeyTypeEmail:
+		if nil != value.Email && nil != other && nil != other.Email {
+			switch operator {
+			case FilterOperatorIsEqual:
+				return value.Email.Content == other.Email.Content
+			case FilterOperatorIsNotEqual:
+				return value.Email.Content != other.Email.Content
+			case FilterOperatorContains:
+				return strings.Contains(value.Email.Content, other.Email.Content)
+			case FilterOperatorDoesNotContain:
+				return !strings.Contains(value.Email.Content, other.Email.Content)
+			case FilterOperatorStartsWith:
+				return strings.HasPrefix(value.Email.Content, other.Email.Content)
+			case FilterOperatorEndsWith:
+				return strings.HasSuffix(value.Email.Content, other.Email.Content)
+			case FilterOperatorIsEmpty:
+				return "" == strings.TrimSpace(value.Email.Content)
+			case FilterOperatorIsNotEmpty:
+				return "" != strings.TrimSpace(value.Email.Content)
 			}
-			return start && end
-		case FilterOperatorIsEmpty:
-			return !value.Date.IsNotEmpty
-		case FilterOperatorIsNotEmpty:
-			return value.Date.IsNotEmpty
-		case FilterOperatorIsRelativeToToday:
-			// TODO: date filter (relative to today)
-			return value.Date.Content >= other.Date.Content && value.Date.Content <= other.Date.Content2
 		}
-	}
-
-	if nil != value.Created && nil != other.Created {
-		switch operator {
-		case FilterOperatorIsEqual:
-			return value.Created.Content == other.Created.Content
-		case FilterOperatorIsNotEqual:
-			return value.Created.Content != other.Created.Content
-		case FilterOperatorIsGreater:
-			return value.Created.Content > other.Created.Content
-		case FilterOperatorIsGreaterOrEqual:
-			return value.Created.Content >= other.Created.Content
-		case FilterOperatorIsLess:
-			return value.Created.Content < other.Created.Content
-		case FilterOperatorIsLessOrEqual:
-			return value.Created.Content <= other.Created.Content
-		case FilterOperatorIsBetween:
-			start := value.Created.Content >= other.Created.Content
-			end := value.Created.Content <= other.Created.Content2
-			return start && end
-		case FilterOperatorIsEmpty:
-			return !value.Created.IsNotEmpty
-		case FilterOperatorIsNotEmpty:
-			return value.Created.IsNotEmpty
-		case FilterOperatorIsRelativeToToday:
-			// TODO: date filter (relative to today)
-			return value.Date.Content >= other.Date.Content && value.Date.Content <= other.Date.Content2
+	case KeyTypePhone:
+		if nil != value.Phone && nil != other && nil != other.Phone {
+			switch operator {
+			case FilterOperatorIsEqual:
+				return value.Phone.Content == other.Phone.Content
+			case FilterOperatorIsNotEqual:
+				return value.Phone.Content != other.Phone.Content
+			case FilterOperatorContains:
+				return strings.Contains(value.Phone.Content, other.Phone.Content)
+			case FilterOperatorDoesNotContain:
+				return !strings.Contains(value.Phone.Content, other.Phone.Content)
+			case FilterOperatorStartsWith:
+				return strings.HasPrefix(value.Phone.Content, other.Phone.Content)
+			case FilterOperatorEndsWith:
+				return strings.HasSuffix(value.Phone.Content, other.Phone.Content)
+			case FilterOperatorIsEmpty:
+				return "" == strings.TrimSpace(value.Phone.Content)
+			case FilterOperatorIsNotEmpty:
+				return "" != strings.TrimSpace(value.Phone.Content)
+			}
 		}
-	}
-
-	if nil != value.Updated && nil != other.Updated {
-		switch operator {
-		case FilterOperatorIsEqual:
-			return value.Updated.Content == other.Updated.Content
-		case FilterOperatorIsNotEqual:
-			return value.Updated.Content != other.Updated.Content
-		case FilterOperatorIsGreater:
-			return value.Updated.Content > other.Updated.Content
-		case FilterOperatorIsGreaterOrEqual:
-			return value.Updated.Content >= other.Updated.Content
-		case FilterOperatorIsLess:
-			return value.Updated.Content < other.Updated.Content
-		case FilterOperatorIsLessOrEqual:
-			return value.Updated.Content <= other.Updated.Content
-		case FilterOperatorIsBetween:
-			start := value.Updated.Content >= other.Updated.Content
-			end := value.Updated.Content <= other.Updated.Content2
-			return start && end
-		case FilterOperatorIsEmpty:
-			return !value.Updated.IsNotEmpty
-		case FilterOperatorIsNotEmpty:
-			return value.Updated.IsNotEmpty
-		case FilterOperatorIsRelativeToToday:
-			// TODO: date filter (relative to today)
-			return value.Date.Content >= other.Date.Content && value.Date.Content <= other.Date.Content2
-		}
-	}
-
-	if nil != value.MSelect {
-		if nil != other.MSelect {
+	case KeyTypeMAsset:
+		if nil != value.MAsset && nil != other && nil != other.MAsset && 0 < len(value.MAsset) && 0 < len(other.MAsset) {
 			switch operator {
 			case FilterOperatorIsEqual, FilterOperatorContains:
 				contains := false
-				for _, v := range value.MSelect {
-					for _, v2 := range other.MSelect {
+				for _, v := range value.MAsset {
+					for _, v2 := range other.MAsset {
 						if v.Content == v2.Content {
 							contains = true
 							break
@@ -480,8 +655,8 @@ func (value *Value) compareOperator(other *Value, operator FilterOperator, attrV
 				return contains
 			case FilterOperatorIsNotEqual, FilterOperatorDoesNotContain:
 				contains := false
-				for _, v := range value.MSelect {
-					for _, v2 := range other.MSelect {
+				for _, v := range value.MAsset {
+					for _, v2 := range other.MAsset {
 						if v.Content == v2.Content {
 							contains = true
 							break
@@ -490,232 +665,204 @@ func (value *Value) compareOperator(other *Value, operator FilterOperator, attrV
 				}
 				return !contains
 			case FilterOperatorIsEmpty:
-				return 0 == len(value.MSelect) || 1 == len(value.MSelect) && "" == value.MSelect[0].Content
+				return 0 == len(value.MAsset) || 1 == len(value.MAsset) && "" == value.MAsset[0].Content
 			case FilterOperatorIsNotEmpty:
-				return 0 != len(value.MSelect) && !(1 == len(value.MSelect) && "" == value.MSelect[0].Content)
+				return 0 != len(value.MAsset) && !(1 == len(value.MAsset) && "" == value.MAsset[0].Content)
 			}
-			return false
 		}
-
-		// 没有设置比较值
-
-		switch operator {
-		case FilterOperatorIsEqual, FilterOperatorIsNotEqual, FilterOperatorContains, FilterOperatorDoesNotContain:
-			return true
-		case FilterOperatorIsEmpty:
-			return 0 == len(value.MSelect) || 1 == len(value.MSelect) && "" == value.MSelect[0].Content
-		case FilterOperatorIsNotEmpty:
-			return 0 != len(value.MSelect) && !(1 == len(value.MSelect) && "" == value.MSelect[0].Content)
-		}
-	}
-
-	if nil != value.URL && nil != other.URL {
-		switch operator {
-		case FilterOperatorIsEqual:
-			return value.URL.Content == other.URL.Content
-		case FilterOperatorIsNotEqual:
-			return value.URL.Content != other.URL.Content
-		case FilterOperatorContains:
-			return strings.Contains(value.URL.Content, other.URL.Content)
-		case FilterOperatorDoesNotContain:
-			return !strings.Contains(value.URL.Content, other.URL.Content)
-		case FilterOperatorStartsWith:
-			return strings.HasPrefix(value.URL.Content, other.URL.Content)
-		case FilterOperatorEndsWith:
-			return strings.HasSuffix(value.URL.Content, other.URL.Content)
-		case FilterOperatorIsEmpty:
-			return "" == strings.TrimSpace(value.URL.Content)
-		case FilterOperatorIsNotEmpty:
-			return "" != strings.TrimSpace(value.URL.Content)
-		}
-	}
-
-	if nil != value.Email && nil != other.Email {
-		switch operator {
-		case FilterOperatorIsEqual:
-			return value.Email.Content == other.Email.Content
-		case FilterOperatorIsNotEqual:
-			return value.Email.Content != other.Email.Content
-		case FilterOperatorContains:
-			return strings.Contains(value.Email.Content, other.Email.Content)
-		case FilterOperatorDoesNotContain:
-			return !strings.Contains(value.Email.Content, other.Email.Content)
-		case FilterOperatorStartsWith:
-			return strings.HasPrefix(value.Email.Content, other.Email.Content)
-		case FilterOperatorEndsWith:
-			return strings.HasSuffix(value.Email.Content, other.Email.Content)
-		case FilterOperatorIsEmpty:
-			return "" == strings.TrimSpace(value.Email.Content)
-		case FilterOperatorIsNotEmpty:
-			return "" != strings.TrimSpace(value.Email.Content)
-		}
-	}
-
-	if nil != value.Phone && nil != other.Phone {
-		switch operator {
-		case FilterOperatorIsEqual:
-			return value.Phone.Content == other.Phone.Content
-		case FilterOperatorIsNotEqual:
-			return value.Phone.Content != other.Phone.Content
-		case FilterOperatorContains:
-			return strings.Contains(value.Phone.Content, other.Phone.Content)
-		case FilterOperatorDoesNotContain:
-			return !strings.Contains(value.Phone.Content, other.Phone.Content)
-		case FilterOperatorStartsWith:
-			return strings.HasPrefix(value.Phone.Content, other.Phone.Content)
-		case FilterOperatorEndsWith:
-			return strings.HasSuffix(value.Phone.Content, other.Phone.Content)
-		case FilterOperatorIsEmpty:
-			return "" == strings.TrimSpace(value.Phone.Content)
-		case FilterOperatorIsNotEmpty:
-			return "" != strings.TrimSpace(value.Phone.Content)
-		}
-	}
-
-	if nil != value.MAsset && nil != other.MAsset && 0 < len(value.MAsset) && 0 < len(other.MAsset) {
-		switch operator {
-		case FilterOperatorIsEqual, FilterOperatorContains:
-			contains := false
-			for _, v := range value.MAsset {
-				for _, v2 := range other.MAsset {
-					if v.Content == v2.Content {
-						contains = true
-						break
-					}
+	case KeyTypeTemplate:
+		if nil != value.Template && nil != other && nil != other.Template {
+			switch operator {
+			case FilterOperatorIsEqual:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
 				}
-			}
-			return contains
-		case FilterOperatorIsNotEqual, FilterOperatorDoesNotContain:
-			contains := false
-			for _, v := range value.MAsset {
-				for _, v2 := range other.MAsset {
-					if v.Content == v2.Content {
-						contains = true
-						break
-					}
+				return value.Template.Content == other.Template.Content
+			case FilterOperatorIsNotEqual:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
 				}
-			}
-			return !contains
-		case FilterOperatorIsEmpty:
-			return 0 == len(value.MAsset) || 1 == len(value.MAsset) && "" == value.MAsset[0].Content
-		case FilterOperatorIsNotEmpty:
-			return 0 != len(value.MAsset) && !(1 == len(value.MAsset) && "" == value.MAsset[0].Content)
-		}
-	}
-
-	if nil != value.Template && nil != other.Template {
-		switch operator {
-		case FilterOperatorIsEqual:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return value.Template.Content == other.Template.Content
-		case FilterOperatorIsNotEqual:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return value.Template.Content != other.Template.Content
-		case FilterOperatorIsGreater:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return value.Template.Content > other.Template.Content
-		case FilterOperatorIsGreaterOrEqual:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return value.Template.Content >= other.Template.Content
-		case FilterOperatorIsLess:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return value.Template.Content < other.Template.Content
-		case FilterOperatorIsLessOrEqual:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return value.Template.Content <= other.Template.Content
-		case FilterOperatorContains:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return strings.Contains(value.Template.Content, other.Template.Content)
-		case FilterOperatorDoesNotContain:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return !strings.Contains(value.Template.Content, other.Template.Content)
-		case FilterOperatorStartsWith:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return strings.HasPrefix(value.Template.Content, other.Template.Content)
-		case FilterOperatorEndsWith:
-			if "" == strings.TrimSpace(other.Template.Content) {
-				return true
-			}
-			return strings.HasSuffix(value.Template.Content, other.Template.Content)
-		case FilterOperatorIsEmpty:
-			return "" == strings.TrimSpace(value.Template.Content)
-		case FilterOperatorIsNotEmpty:
-			return "" != strings.TrimSpace(value.Template.Content)
-		}
-	}
-
-	if nil != value.Checkbox {
-		switch operator {
-		case FilterOperatorIsTrue:
-			return value.Checkbox.Checked
-		case FilterOperatorIsFalse:
-			return !value.Checkbox.Checked
-		}
-	}
-
-	if nil != value.Relation && nil != other.Relation {
-		switch operator {
-		case FilterOperatorContains:
-			contains := false
-			for _, c := range value.Relation.Contents {
-				for _, c1 := range other.Relation.Contents {
-					if strings.Contains(c, c1) {
-						contains = true
-						break
-					}
+				return value.Template.Content != other.Template.Content
+			case FilterOperatorIsGreater:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
 				}
-			}
-			return contains
-		case FilterOperatorDoesNotContain:
-			contains := false
-			for _, c := range value.Relation.Contents {
-				for _, c1 := range other.Relation.Contents {
-					if strings.Contains(c, c1) {
-						contains = true
-						break
-					}
+				return value.Template.Content > other.Template.Content
+			case FilterOperatorIsGreaterOrEqual:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
 				}
+				return value.Template.Content >= other.Template.Content
+			case FilterOperatorIsLess:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
+				}
+				return value.Template.Content < other.Template.Content
+			case FilterOperatorIsLessOrEqual:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
+				}
+				return value.Template.Content <= other.Template.Content
+			case FilterOperatorContains:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
+				}
+				return strings.Contains(value.Template.Content, other.Template.Content)
+			case FilterOperatorDoesNotContain:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
+				}
+				return !strings.Contains(value.Template.Content, other.Template.Content)
+			case FilterOperatorStartsWith:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
+				}
+				return strings.HasPrefix(value.Template.Content, other.Template.Content)
+			case FilterOperatorEndsWith:
+				if "" == strings.TrimSpace(other.Template.Content) {
+					return true
+				}
+				return strings.HasSuffix(value.Template.Content, other.Template.Content)
+			case FilterOperatorIsEmpty:
+				return "" == strings.TrimSpace(value.Template.Content)
+			case FilterOperatorIsNotEmpty:
+				return "" != strings.TrimSpace(value.Template.Content)
 			}
-			return !contains
-		case FilterOperatorIsEmpty:
-			return 0 == len(value.Relation.Contents) || 1 == len(value.Relation.Contents) && "" == value.Relation.Contents[0]
-		case FilterOperatorIsNotEmpty:
-			return 0 != len(value.Relation.Contents) && !(1 == len(value.Relation.Contents) && "" == value.Relation.Contents[0])
+		}
+	case KeyTypeCheckbox:
+		if nil != value.Checkbox {
+			switch operator {
+			case FilterOperatorIsTrue:
+				return value.Checkbox.Checked
+			case FilterOperatorIsFalse:
+				return !value.Checkbox.Checked
+			}
 		}
 	}
-
 	return false
+}
+
+func filterTime(valueMills int64, valueIsNotEmpty bool, otherValueStart, otherValueEnd, otherValueEnd2 time.Time, operator FilterOperator) bool {
+	valueTime := time.UnixMilli(valueMills)
+	switch operator {
+	case FilterOperatorIsEqual:
+		return (valueTime.After(otherValueStart) || valueTime.Equal(otherValueStart)) && valueTime.Before(otherValueEnd)
+	case FilterOperatorIsNotEqual:
+		return valueTime.Before(otherValueStart) || valueTime.After(otherValueEnd)
+	case FilterOperatorIsGreater:
+		return valueTime.After(otherValueEnd) || valueTime.Equal(otherValueEnd)
+	case FilterOperatorIsGreaterOrEqual:
+		return valueTime.After(otherValueStart) || valueTime.Equal(otherValueStart)
+	case FilterOperatorIsLess:
+		return valueTime.Before(otherValueStart)
+	case FilterOperatorIsLessOrEqual:
+		return valueTime.Before(otherValueEnd) || valueTime.Equal(otherValueEnd)
+	case FilterOperatorIsBetween:
+		return (valueTime.After(otherValueStart) || valueTime.Equal(otherValueStart)) && (valueTime.Before(otherValueEnd2) || valueTime.Equal(otherValueEnd2))
+	case FilterOperatorIsEmpty:
+		return !valueIsNotEmpty
+	case FilterOperatorIsNotEmpty:
+		return valueIsNotEmpty
+	}
+	return false
+}
+
+// 根据 Count、Unit 和 Direction 计算相对当前时间的开始时间和结束时间
+func calcRelativeTimeRegion(count int, unit RelativeDateUnit, direction RelativeDateDirection) (start, end time.Time) {
+	now := time.Now()
+	switch unit {
+	case RelativeDateUnitDay:
+		switch direction {
+		case RelativeDateDirectionBefore:
+			// 结束时间使用今天的开始时间
+			end = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			// 开始时间使用结束时间减去 count 天
+			start = end.AddDate(0, 0, -count)
+		case RelativeDateDirectionThis:
+			// 开始时间使用今天的开始时间
+			start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			// 结束时间使用开始时间加上 count 天
+			end = start.AddDate(0, 0, count)
+		case RelativeDateDirectionAfter:
+			// 开始时间使用今天的结束时间
+			start = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, now.Location())
+			// 结束时间使用开始时间加上 count 天
+			end = start.AddDate(0, 0, count)
+		}
+	case RelativeDateUnitWeek:
+		weekday := int(now.Weekday())
+		if 0 == weekday {
+			weekday = 7
+		}
+		switch direction {
+		case RelativeDateDirectionBefore:
+			// 结束时间使用本周的开始时间
+			end = time.Date(now.Year(), now.Month(), now.Day()-weekday, 0, 0, 0, 0, now.Location())
+			// 开始时间使用结束时间减去 count*7 天
+			start = end.AddDate(0, 0, -count*7)
+		case RelativeDateDirectionThis:
+			// 开始时间使用本周的开始时间
+			start = time.Date(now.Year(), now.Month(), now.Day()-weekday, 0, 0, 0, 0, now.Location())
+			// 结束时间使用开始时间加上 count*7 天
+			end = start.AddDate(0, 0, count*7)
+		case RelativeDateDirectionAfter:
+			//  开始时间使用本周的结束时间
+			start = time.Date(now.Year(), now.Month(), now.Day()-weekday+7, 23, 59, 59, 999999999, now.Location())
+			// 结束时间使用开始时间加上 count*7 天
+			end = start.AddDate(0, 0, count*7)
+		}
+	case RelativeDateUnitMonth:
+		switch direction {
+		case RelativeDateDirectionBefore:
+			// 结束时间使用本月的开始时间
+			end = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+			// 开始时间使用结束时间减去 count 个月
+			start = end.AddDate(0, -count, 0)
+		case RelativeDateDirectionThis:
+			// 开始时间使用本月的开始时间
+			start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+			// 结束时间使用开始时间加上 count 个月
+			end = start.AddDate(0, count, 0)
+		case RelativeDateDirectionAfter:
+			// 开始时间使用本月的结束时间
+			start = time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location()).Add(-time.Nanosecond)
+			// 结束时间使用开始时间加上 count 个月
+			end = start.AddDate(0, count, 0)
+		}
+	case RelativeDateUnitYear:
+		switch direction {
+		case RelativeDateDirectionBefore:
+			// 结束时间使用今年的开始时间
+			end = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
+			// 开始时间使用结束时间减去 count 年
+			start = end.AddDate(-count, 0, 0)
+		case RelativeDateDirectionThis:
+			// 开始时间使用今年的开始时间
+			start = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
+			// 结束时间使用开始时间加上 count 年
+			end = start.AddDate(count, 0, 0)
+		case RelativeDateDirectionAfter:
+			// 开始时间使用今年的结束时间
+			start = time.Date(now.Year()+1, 1, 1, 0, 0, 0, 0, now.Location()).Add(-time.Nanosecond)
+			// 结束时间使用开始时间加上 count 年
+			end = start.AddDate(count, 0, 0)
+		}
+	}
+	return
 }
 
 // Table 描述了表格实例的结构。
 type Table struct {
-	ID       string         `json:"id"`       // 表格布局 ID
-	Icon     string         `json:"icon"`     // 表格图标
-	Name     string         `json:"name"`     // 表格名称
-	Filters  []*ViewFilter  `json:"filters"`  // 过滤规则
-	Sorts    []*ViewSort    `json:"sorts"`    // 排序规则
-	Columns  []*TableColumn `json:"columns"`  // 表格列
-	Rows     []*TableRow    `json:"rows"`     // 表格行
-	RowCount int            `json:"rowCount"` // 表格总行数
-	PageSize int            `json:"pageSize"` // 每页行数
+	ID               string         `json:"id"`               // 表格布局 ID
+	Icon             string         `json:"icon"`             // 表格图标
+	Name             string         `json:"name"`             // 表格名称
+	HideAttrViewName bool           `json:"hideAttrViewName"` // 是否隐藏属性视图名称
+	Filters          []*ViewFilter  `json:"filters"`          // 过滤规则
+	Sorts            []*ViewSort    `json:"sorts"`            // 排序规则
+	Columns          []*TableColumn `json:"columns"`          // 表格列
+	Rows             []*TableRow    `json:"rows"`             // 表格行
+	RowCount         int            `json:"rowCount"`         // 表格总行数
+	PageSize         int            `json:"pageSize"`         // 每页行数
 }
 
 type TableColumn struct {
@@ -761,6 +908,16 @@ func (row *TableRow) GetBlockValue() (ret *Value) {
 	return
 }
 
+func (row *TableRow) GetValue(keyID string) (ret *Value) {
+	for _, cell := range row.Cells {
+		if nil != cell.Value && keyID == cell.Value.KeyID {
+			ret = cell.Value
+			break
+		}
+	}
+	return
+}
+
 func (table *Table) GetType() LayoutType {
 	return LayoutTypeTable
 }
@@ -789,9 +946,53 @@ func (table *Table) SortRows() {
 		}
 	}
 
-	sort.Slice(table.Rows, func(i, j int) bool {
+	includeUneditedRows := map[string]bool{}
+	for i, row := range table.Rows {
 		for _, colIndexSort := range colIndexSorts {
-			result := table.Rows[i].Cells[colIndexSort.Index].Value.Compare(table.Rows[j].Cells[colIndexSort.Index].Value)
+			val := table.Rows[i].Cells[colIndexSort.Index].Value
+			if !val.IsEdited() {
+				// 如果该行的某个列的值是未编辑的，则该行不参与排序
+				includeUneditedRows[row.ID] = true
+				break
+			}
+		}
+	}
+
+	// 将包含未编辑的行和全部已编辑的行分开排序
+	var uneditedRows, editedRows []*TableRow
+	for _, row := range table.Rows {
+		if _, ok := includeUneditedRows[row.ID]; ok {
+			uneditedRows = append(uneditedRows, row)
+		} else {
+			editedRows = append(editedRows, row)
+		}
+	}
+
+	sort.Slice(uneditedRows, func(i, j int) bool {
+		val1 := uneditedRows[i].GetBlockValue()
+		if nil == val1 {
+			return true
+		}
+		val2 := uneditedRows[j].GetBlockValue()
+		if nil == val2 {
+			return false
+		}
+		return val1.CreatedAt < val2.CreatedAt
+	})
+
+	sort.Slice(editedRows, func(i, j int) bool {
+		for _, colIndexSort := range colIndexSorts {
+			val1 := editedRows[i].Cells[colIndexSort.Index].Value
+			if nil == val1 {
+				return colIndexSort.Order == SortOrderAsc
+			}
+
+			val2 := editedRows[j].Cells[colIndexSort.Index].Value
+			if nil == val2 {
+				return colIndexSort.Order != SortOrderAsc
+			}
+
+			result := val1.Compare(val2)
 			if 0 == result {
 				continue
 			}
@@ -803,6 +1004,12 @@ func (table *Table) SortRows() {
 		}
 		return false
 	})
+
+	// 将包含未编辑的行放在最后
+	table.Rows = append(editedRows, uneditedRows...)
+	if 1 > len(table.Rows) {
+		table.Rows = []*TableRow{}
+	}
 }
 
 func (table *Table) FilterRows(attrView *AttributeView) {
@@ -840,7 +1047,7 @@ func (table *Table) FilterRows(attrView *AttributeView) {
 				break
 			}
 
-			if !row.Cells[index].Value.CompareOperator(table.Filters[j].Value, operator, attrView, row.ID) {
+			if !row.Cells[index].Value.Filter(table.Filters[j], attrView, row.ID) {
 				pass = false
 				break
 			}
