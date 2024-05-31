@@ -22,8 +22,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/siyuan-note/riff"
-	"github.com/siyuan-note/siyuan/kernel/av"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -33,6 +31,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -47,18 +46,29 @@ import (
 	"github.com/88250/lute/render"
 	"github.com/siyuan-note/filelock"
 	"github.com/siyuan-note/logging"
+	"github.com/siyuan-note/riff"
+	"github.com/siyuan-note/siyuan/kernel/av"
 	"github.com/siyuan-note/siyuan/kernel/filesys"
 	"github.com/siyuan-note/siyuan/kernel/sql"
 	"github.com/siyuan-note/siyuan/kernel/treenode"
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
-func HTML2Markdown(htmlStr string) (markdown string, err error) {
+func HTML2Markdown(htmlStr string) (markdown string, withMath bool, err error) {
 	assetDirPath := filepath.Join(util.DataDir, "assets")
 	luteEngine := util.NewLute()
 	tree := luteEngine.HTML2Tree(htmlStr)
 	ast.Walk(tree.Root, func(n *ast.Node, entering bool) ast.WalkStatus {
-		if !entering || ast.NodeLinkDest != n.Type {
+		if !entering {
+			return ast.WalkContinue
+		}
+
+		if ast.NodeInlineMath == n.Type {
+			withMath = true
+			return ast.WalkContinue
+		}
+
+		if ast.NodeLinkDest != n.Type {
 			return ast.WalkContinue
 		}
 
@@ -109,17 +119,19 @@ func ImportSY(zipPath, boxID, toPath string) (err error) {
 		return nil
 	})
 
-	unzipRootPaths, err := filepath.Glob(unzipPath + "/*")
+	entries, err := os.ReadDir(unzipPath)
 	if nil != err {
+		logging.LogErrorf("read unzip dir [%s] failed: %s", unzipPath, err)
 		return
 	}
-	if 1 != len(unzipRootPaths) {
-		logging.LogErrorf("invalid .sy.zip")
+	if 1 != len(entries) {
+		logging.LogErrorf("invalid .sy.zip [%v]", entries)
 		return errors.New(Conf.Language(199))
 	}
-	unzipRootPath := unzipRootPaths[0]
+	unzipRootPath := filepath.Join(unzipPath, entries[0].Name())
 	name := filepath.Base(unzipRootPath)
 	if strings.HasPrefix(name, "data-20") && len("data-20230321175442") == len(name) {
+		logging.LogErrorf("invalid .sy.zip [unzipRootPath=%s, baseName=%s]", unzipRootPath, name)
 		return errors.New(Conf.Language(199))
 	}
 
@@ -286,6 +298,13 @@ func ImportSY(zipPath, boxID, toPath string) (err error) {
 			avNodes := tree.Root.ChildrenByType(ast.NodeAttributeView)
 			av.BatchUpsertBlockRel(avNodes)
 		}
+
+		// 如果数据库中绑定的块不在导入的文档中，则需要单独更新这些绑定块的属性
+		var attrViewIDs []string
+		for _, avID := range avIDs {
+			attrViewIDs = append(attrViewIDs, avID)
+		}
+		updateBoundBlockAvsAttribute(attrViewIDs)
 	}
 
 	// 将关联的闪卡数据合并到默认卡包 data/storage/riff/20230218211946-2kw8jgx 中
@@ -927,8 +946,11 @@ func processBase64Img(n *ast.Node, dest string, assetDirPath string, err error) 
 	os.MkdirAll(base64TmpDir, 0755)
 
 	sep := strings.Index(dest, ";base64,")
+	str := strings.TrimSpace(dest[sep+8:])
+	re := regexp.MustCompile(`(?i)%0A`)
+	str = re.ReplaceAllString(str, "\n")
 	var decodeErr error
-	unbased, decodeErr := base64.StdEncoding.DecodeString(dest[sep+8:])
+	unbased, decodeErr := base64.StdEncoding.DecodeString(str)
 	if nil != decodeErr {
 		logging.LogErrorf("decode base64 image failed: %s", decodeErr)
 		return
@@ -1193,6 +1215,10 @@ func convertWikiLinksAndTags0(tree *parse.Tree) {
 }
 
 func convertTags(text string) (ret string) {
+	if !util.MarkdownSettings.InlineTag {
+		return text
+	}
+
 	pos, i := -1, 0
 	tokens := []byte(text)
 	for ; i < len(tokens); i++ {
