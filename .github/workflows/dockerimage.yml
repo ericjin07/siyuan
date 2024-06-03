@@ -28,6 +28,9 @@ jobs:
       packages: write
       contents: read
 
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+
     steps:
       - name: Checkout repository and submodules
         uses: actions/checkout@v4
@@ -93,7 +96,7 @@ jobs:
           script: |
             cd /home/eric/docker-env
             docker compose down
-            sed -i 's/\(IMG_SIYUAN=.*:\)v[0-9.]\+/\1v${{ steps.version.outputs.value }}/' .env
+            sed -i 's/\(IMG_SIYUAN=.*:\)v[0-9.]\+/\1v${{ needs.build.outputs.version }}/' .env
             docker compose up -d
       
 
