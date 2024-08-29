@@ -320,8 +320,6 @@ func (tx *Transaction) doMove(operation *Operation) (ret *TxErr) {
 		headingChildren = treenode.GetHeadingFold(headingChildren)
 	}
 
-	refreshHeadingChildrenUpdated(srcNode, time.Now().Format("20060102150405"))
-
 	var srcEmptyList *ast.Node
 	if ast.NodeListItem == srcNode.Type && srcNode.Parent.FirstChild == srcNode && srcNode.Parent.LastChild == srcNode {
 		// 列表中唯一的列表项被移除后，该列表就为空了
@@ -373,8 +371,6 @@ func (tx *Transaction) doMove(operation *Operation) (ret *TxErr) {
 		if nil != srcEmptyList {
 			srcEmptyList.Unlink()
 		}
-
-		refreshHeadingChildrenUpdated(srcNode, time.Now().Format("20060102150405"))
 
 		refreshUpdated(srcNode)
 		refreshUpdated(srcTree.Root)
@@ -453,8 +449,6 @@ func (tx *Transaction) doMove(operation *Operation) (ret *TxErr) {
 			srcEmptyList.Unlink()
 		}
 	}
-
-	refreshHeadingChildrenUpdated(srcNode, time.Now().Format("20060102150405"))
 
 	refreshUpdated(srcNode)
 	refreshUpdated(srcTree.Root)
@@ -765,8 +759,6 @@ func (tx *Transaction) doDelete(operation *Operation) (ret *TxErr) {
 		node.Next.Unlink()
 	}
 
-	refreshHeadingChildrenUpdated(node, time.Now().Format("20060102150405"))
-
 	node.Unlink()
 	if nil != parent && ast.NodeListItem == parent.Type && nil == parent.FirstChild {
 		// 保持空列表项
@@ -780,53 +772,81 @@ func (tx *Transaction) doDelete(operation *Operation) (ret *TxErr) {
 		return
 	}
 
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		WaitForWritingFiles()
+	// 如果是断开列表时的删除列表项事务，则不需要删除数据库绑定块，因为断开列表事务后面会再次插入相同 ID 的列表项
+	// List item disconnection no longer affects database binding blocks https://github.com/siyuan-note/siyuan/issues/12235
+	needSyncDel2AvBlock := true
+	if ast.NodeListItem == node.Type {
+		for _, op := range tx.DoOperations {
+			// 不可能出现相同 ID 先插入再删除的情况，只可能出现先删除再插入的情况，所以这里只需要查找插入操作
+			if "insert" == op.Action {
+				data := strings.ReplaceAll(op.Data.(string), editor.FrontEndCaret, "")
+				subTree := tx.luteEngine.BlockDOM2Tree(data)
+				ast.Walk(subTree.Root, func(n *ast.Node, entering bool) ast.WalkStatus {
+					if !entering || ast.NodeListItem != n.Type {
+						return ast.WalkContinue
+					}
+
+					if n.ID == operation.ID {
+						needSyncDel2AvBlock = false
+						return ast.WalkStop
+					}
+					return ast.WalkContinue
+				})
+
+				break
+			}
+		}
+	}
+
+	if needSyncDel2AvBlock {
 		syncDelete2AttributeView(node)
 		syncDelete2Block(node)
-	}()
+	}
 	return
 }
 
 func syncDelete2Block(node *ast.Node) {
 	var changedAvIDs []string
 	ast.Walk(node, func(n *ast.Node, entering bool) ast.WalkStatus {
-		if !entering {
+		if !entering || ast.NodeAttributeView != n.Type {
 			return ast.WalkContinue
 		}
 
-		if ast.NodeAttributeView == n.Type {
-			avID := n.AttributeViewID
-			if changed := av.RemoveBlockRel(avID, n.ID, treenode.ExistBlockTree); changed {
-				changedAvIDs = append(changedAvIDs, avID)
-			}
+		avID := n.AttributeViewID
+		isMirror := av.IsMirror(avID)
+		if changed := av.RemoveBlockRel(avID, n.ID, treenode.ExistBlockTree); changed {
+			changedAvIDs = append(changedAvIDs, avID)
+		}
 
-			attrView, err := av.ParseAttributeView(avID)
-			if nil != err {
-				return ast.WalkContinue
-			}
+		if isMirror {
+			// 删除镜像数据库节点后不需要解绑块，因为其他镜像节点还在使用
+			return ast.WalkContinue
+		}
 
-			trees, nodes := getAttrViewBoundNodes(attrView)
-			for _, toChangNode := range nodes {
-				avs := toChangNode.IALAttr(av.NodeAttrNameAvs)
-				if "" != avs {
-					avIDs := strings.Split(avs, ",")
-					avIDs = gulu.Str.RemoveElem(avIDs, avID)
-					if 1 > len(avIDs) {
-						toChangNode.RemoveIALAttr(av.NodeAttrNameAvs)
-					} else {
-						toChangNode.SetIALAttr(av.NodeAttrNameAvs, strings.Join(avIDs, ","))
-					}
+		attrView, err := av.ParseAttributeView(avID)
+		if nil != err {
+			return ast.WalkContinue
+		}
+
+		trees, nodes := getAttrViewBoundNodes(attrView)
+		for _, toChangNode := range nodes {
+			avs := toChangNode.IALAttr(av.NodeAttrNameAvs)
+			if "" != avs {
+				avIDs := strings.Split(avs, ",")
+				avIDs = gulu.Str.RemoveElem(avIDs, avID)
+				if 1 > len(avIDs) {
+					toChangNode.RemoveIALAttr(av.NodeAttrNameAvs)
+				} else {
+					toChangNode.SetIALAttr(av.NodeAttrNameAvs, strings.Join(avIDs, ","))
 				}
-				avNames := getAvNames(toChangNode.IALAttr(av.NodeAttrNameAvs))
-				oldAttrs := parse.IAL2Map(toChangNode.KramdownIAL)
-				toChangNode.SetIALAttr(av.NodeAttrViewNames, avNames)
-				pushBroadcastAttrTransactions(oldAttrs, toChangNode)
 			}
-			for _, tree := range trees {
-				indexWriteTreeUpsertQueue(tree)
-			}
+			avNames := getAvNames(toChangNode.IALAttr(av.NodeAttrNameAvs))
+			oldAttrs := parse.IAL2Map(toChangNode.KramdownIAL)
+			toChangNode.SetIALAttr(av.NodeAttrViewNames, avNames)
+			pushBroadcastAttrTransactions(oldAttrs, toChangNode)
+		}
+		for _, tree := range trees {
+			indexWriteTreeUpsertQueue(tree)
 		}
 		return ast.WalkContinue
 	})
@@ -1026,8 +1046,6 @@ func (tx *Transaction) doInsert(operation *Operation) (ret *TxErr) {
 		}
 	}
 
-	refreshHeadingChildrenUpdated(insertedNode, time.Now().Format("20060102150405"))
-
 	createdUpdated(insertedNode)
 	tx.nodes[insertedNode.ID] = insertedNode
 	if err = tx.writeTree(tree); nil != err {
@@ -1035,6 +1053,20 @@ func (tx *Transaction) doInsert(operation *Operation) (ret *TxErr) {
 	}
 
 	upsertAvBlockRel(insertedNode)
+
+	// 复制为副本时将该副本块插入到数据库中 https://github.com/siyuan-note/siyuan/issues/11959
+	avs := insertedNode.IALAttr(av.NodeAttrNameAvs)
+	for _, avID := range strings.Split(avs, ",") {
+		if !ast.IsNodeIDPattern(avID) {
+			continue
+		}
+
+		AddAttributeViewBlock(tx, []map[string]interface{}{{
+			"id":         insertedNode.ID,
+			"isDetached": false,
+		}}, avID, "", previousID, false)
+		util.PushReloadAttrView(avID)
+	}
 
 	operation.ID = insertedNode.ID
 	operation.ParentID = insertedNode.Parent.ID
@@ -1047,11 +1079,6 @@ func (tx *Transaction) doUpdate(operation *Operation) (ret *TxErr) {
 	id := operation.ID
 	tree, err := tx.loadTree(id)
 	if nil != err {
-		if errors.Is(err, ErrBlockNotFound) {
-			logging.LogWarnf("not found block [%s]", id)
-			return
-		}
-
 		logging.LogErrorf("load tree [%s] failed: %s", id, err)
 		return &TxErr{code: TxErrCodeBlockNotFound, id: id}
 	}
@@ -1115,8 +1142,6 @@ func (tx *Transaction) doUpdate(operation *Operation) (ret *TxErr) {
 		treenode.MoveFoldHeading(updatedNode, oldNode)
 	}
 
-	refreshHeadingChildrenUpdated(oldNode, time.Now().Format("20060102150405"))
-
 	cache.PutBlockIAL(updatedNode.ID, parse.IAL2Map(updatedNode.KramdownIAL))
 
 	// 替换为新节点
@@ -1124,7 +1149,6 @@ func (tx *Transaction) doUpdate(operation *Operation) (ret *TxErr) {
 	oldNode.Unlink()
 
 	createdUpdated(updatedNode)
-	refreshHeadingChildrenUpdated(updatedNode, updatedNode.IALAttr("updated"))
 
 	tx.nodes[updatedNode.ID] = updatedNode
 	if err = tx.writeTree(tree); nil != err {
@@ -1135,19 +1159,6 @@ func (tx *Transaction) doUpdate(operation *Operation) (ret *TxErr) {
 
 	checkUpsertInUserGuide(tree)
 	return
-}
-
-func refreshHeadingChildrenUpdated(heading *ast.Node, updated string) {
-	if nil == heading || ast.NodeHeading != heading.Type {
-		return
-	}
-
-	// 将非标题块更新为标题块时需要更新下方块的 parent id
-	// The parent block field of the blocks under the heading block is calculated incorrectly https://github.com/siyuan-note/siyuan/issues/9869
-	children := treenode.HeadingChildren(heading)
-	for _, child := range children {
-		child.SetIALAttr("updated", updated)
-	}
 }
 
 func upsertAvBlockRel(node *ast.Node) {
@@ -1265,13 +1276,27 @@ func refreshUpdated(node *ast.Node) {
 }
 
 func createdUpdated(node *ast.Node) {
+	// 补全子节点的更新时间 Improve block update time filling https://github.com/siyuan-note/siyuan/issues/12182
+	ast.Walk(node, func(n *ast.Node, entering bool) ast.WalkStatus {
+		if !entering || !n.IsBlock() || ast.NodeKramdownBlockIAL == n.Type {
+			return ast.WalkContinue
+		}
+
+		updated := n.IALAttr("updated")
+		if "" == updated && ast.IsNodeIDPattern(n.ID) {
+			created := util.TimeFromID(n.ID)
+			n.SetIALAttr("updated", created)
+		}
+		return ast.WalkContinue
+	})
+
 	created := util.TimeFromID(node.ID)
 	updated := node.IALAttr("updated")
 	if "" == updated {
 		updated = created
 	}
 	if updated < created {
-		updated = created // 复制粘贴块后创建时间小于更新时间 https://github.com/siyuan-note/siyuan/issues/3624
+		updated = created
 	}
 	parents := treenode.ParentNodesWithHeadings(node)
 	for _, parent := range parents { // 更新所有父节点的更新时间字段

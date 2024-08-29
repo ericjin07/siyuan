@@ -538,7 +538,7 @@ func ExportResources(resourcePaths []string, mainName string) (exportFilePath st
 
 func Preview(id string) (retStdHTML string, retOutline []*Path) {
 	tree, _ := LoadTreeByBlockID(id)
-	tree = exportTree(tree, false, false,
+	tree = exportTree(tree, false, false, true,
 		Conf.Export.BlockRefMode, Conf.Export.BlockEmbedMode, Conf.Export.FileAnnotationRefMode,
 		Conf.Export.TagOpenMarker, Conf.Export.TagCloseMarker,
 		Conf.Export.BlockRefTextLeft, Conf.Export.BlockRefTextRight,
@@ -643,7 +643,7 @@ func ExportMarkdownHTML(id, savePath string, docx, merge bool) (name, dom string
 		}
 	}
 
-	tree = exportTree(tree, true, false,
+	tree = exportTree(tree, true, false, true,
 		Conf.Export.BlockRefMode, Conf.Export.BlockEmbedMode, Conf.Export.FileAnnotationRefMode,
 		Conf.Export.TagOpenMarker, Conf.Export.TagCloseMarker,
 		Conf.Export.BlockRefTextLeft, Conf.Export.BlockRefTextRight,
@@ -793,7 +793,7 @@ func ExportHTML(id, savePath string, pdf, image, keepFold, merge bool) (name, do
 		}
 	}
 
-	tree = exportTree(tree, true, keepFold,
+	tree = exportTree(tree, true, keepFold, true,
 		Conf.Export.BlockRefMode, Conf.Export.BlockEmbedMode, Conf.Export.FileAnnotationRefMode,
 		Conf.Export.TagOpenMarker, Conf.Export.TagCloseMarker,
 		Conf.Export.BlockRefTextLeft, Conf.Export.BlockRefTextRight,
@@ -1840,7 +1840,7 @@ func exportMarkdownContent0(tree *parse.Tree, cloudAssetsBase string, assetsDest
 	blockRefTextLeft, blockRefTextRight string,
 	addTitle bool,
 	defBlockIDs []string) (ret string) {
-	tree = exportTree(tree, false, false,
+	tree = exportTree(tree, false, false, false,
 		blockRefMode, blockEmbedMode, fileAnnotationRefMode,
 		tagOpenMarker, tagCloseMarker,
 		blockRefTextLeft, blockRefTextRight,
@@ -1929,7 +1929,7 @@ func exportMarkdownContent0(tree *parse.Tree, cloudAssetsBase string, assetsDest
 	return
 }
 
-func exportTree(tree *parse.Tree, wysiwyg, keepFold bool,
+func exportTree(tree *parse.Tree, wysiwyg, keepFold, avHiddenCol bool,
 	blockRefMode, blockEmbedMode, fileAnnotationRefMode int,
 	tagOpenMarker, tagCloseMarker string,
 	blockRefTextLeft, blockRefTextRight string,
@@ -1939,7 +1939,8 @@ func exportTree(tree *parse.Tree, wysiwyg, keepFold bool,
 	id := tree.Root.ID
 
 	// 解析查询嵌入节点
-	resolveEmbedR(ret.Root, blockEmbedMode, luteEngine, &[]string{})
+	depth := 0
+	resolveEmbedR(ret.Root, blockEmbedMode, luteEngine, &[]string{}, &depth)
 
 	// 收集引用转脚注
 	var refFootnotes []*refAsFootnotes
@@ -2009,8 +2010,13 @@ func exportTree(tree *parse.Tree, wysiwyg, keepFold bool,
 			n.InsertBefore(blockRefLink)
 			unlinks = append(unlinks, n)
 		case 3: // 仅锚文本
-			blockRefLink := &ast.Node{Type: ast.NodeTextMark, TextMarkType: "text", TextMarkTextContent: linkText}
-			blockRefLink.KramdownIAL = n.KramdownIAL
+			var blockRefLink *ast.Node
+			if 0 < len(n.KramdownIAL) {
+				blockRefLink = &ast.Node{Type: ast.NodeTextMark, TextMarkType: "text", TextMarkTextContent: linkText}
+				blockRefLink.KramdownIAL = n.KramdownIAL
+			} else {
+				blockRefLink = &ast.Node{Type: ast.NodeText, Tokens: []byte(linkText)}
+			}
 			n.InsertBefore(blockRefLink)
 			unlinks = append(unlinks, n)
 		case 4: // 脚注
@@ -2218,10 +2224,18 @@ func exportTree(tree *parse.Tree, wysiwyg, keepFold bool,
 		mdTableHeadRow := &ast.Node{Type: ast.NodeTableRow, TableAligns: aligns}
 		mdTableHead.AppendChild(mdTableHeadRow)
 		for _, col := range table.Columns {
+			if avHiddenCol && col.Hidden {
+				// 按需跳过隐藏列 Improve database table view exporting https://github.com/siyuan-note/siyuan/issues/12232
+				continue
+			}
+
 			cell := &ast.Node{Type: ast.NodeTableCell}
-			name := string(lex.EscapeProtyleMarkers([]byte(col.Name)))
-			name = strings.ReplaceAll(name, "\\|", "|")
-			name = strings.ReplaceAll(name, "|", "\\|")
+			name := col.Name
+			if !wysiwyg {
+				name = string(lex.EscapeProtyleMarkers([]byte(col.Name)))
+				name = strings.ReplaceAll(name, "\\|", "|")
+				name = strings.ReplaceAll(name, "|", "\\|")
+			}
 			cell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(name)})
 			mdTableHeadRow.AppendChild(cell)
 		}
@@ -2231,6 +2245,12 @@ func exportTree(tree *parse.Tree, wysiwyg, keepFold bool,
 			mdTableRow := &ast.Node{Type: ast.NodeTableRow, TableAligns: aligns}
 			mdTable.AppendChild(mdTableRow)
 			for _, cell := range row.Cells {
+				if avHiddenCol && nil != cell.Value {
+					if col := table.GetColumn(cell.Value.KeyID); nil != col && col.Hidden {
+						continue
+					}
+				}
+
 				mdTableCell := &ast.Node{Type: ast.NodeTableCell}
 				mdTableRow.AppendChild(mdTableCell)
 				var val string
@@ -2238,26 +2258,64 @@ func exportTree(tree *parse.Tree, wysiwyg, keepFold bool,
 					if av.KeyTypeBlock == cell.Value.Type {
 						if nil != cell.Value.Block {
 							val = cell.Value.Block.Content
-							val = string(lex.EscapeProtyleMarkers([]byte(val)))
-							val = strings.ReplaceAll(val, "\\|", "|")
-							val = strings.ReplaceAll(val, "|", "\\|")
-							lines := strings.Split(val, "\n")
-							for _, line := range lines {
-								mdTableCell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(line)})
-								mdTableCell.AppendChild(&ast.Node{Type: ast.NodeHardBreak})
+							if !wysiwyg {
+								val = string(lex.EscapeProtyleMarkers([]byte(val)))
+								val = strings.ReplaceAll(val, "\\|", "|")
+								val = strings.ReplaceAll(val, "|", "\\|")
+							}
+							col := table.GetColumn(cell.Value.KeyID)
+							if nil != col && col.Wrap {
+								lines := strings.Split(val, "\n")
+								for _, line := range lines {
+									mdTableCell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(line)})
+									mdTableCell.AppendChild(&ast.Node{Type: ast.NodeHardBreak})
+								}
+							} else {
+								val = strings.ReplaceAll(val, "\n", " ")
+								mdTableCell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(val)})
 							}
 							continue
 						}
 					} else if av.KeyTypeText == cell.Value.Type {
 						if nil != cell.Value.Text {
 							val = cell.Value.Text.Content
-							val = string(lex.EscapeProtyleMarkers([]byte(val)))
+							if !wysiwyg {
+								val = string(lex.EscapeProtyleMarkers([]byte(val)))
+								val = strings.ReplaceAll(val, "\\|", "|")
+								val = strings.ReplaceAll(val, "|", "\\|")
+							}
+							col := table.GetColumn(cell.Value.KeyID)
+							if nil != col && col.Wrap {
+								lines := strings.Split(val, "\n")
+								for _, line := range lines {
+									mdTableCell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(line)})
+									mdTableCell.AppendChild(&ast.Node{Type: ast.NodeHardBreak})
+								}
+							} else {
+								val = strings.ReplaceAll(val, "\n", " ")
+								mdTableCell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(val)})
+							}
+							continue
+						}
+					} else if av.KeyTypeTemplate == cell.Value.Type {
+						if nil != cell.Value.Template {
+							val = cell.Value.Template.Content
+							if "<no value>" == val {
+								val = ""
+							}
+
 							val = strings.ReplaceAll(val, "\\|", "|")
 							val = strings.ReplaceAll(val, "|", "\\|")
-							lines := strings.Split(val, "\n")
-							for _, line := range lines {
-								mdTableCell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(line)})
-								mdTableCell.AppendChild(&ast.Node{Type: ast.NodeHardBreak})
+							col := table.GetColumn(cell.Value.KeyID)
+							if nil != col && col.Wrap {
+								lines := strings.Split(val, "\n")
+								for _, line := range lines {
+									mdTableCell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(line)})
+									mdTableCell.AppendChild(&ast.Node{Type: ast.NodeHardBreak})
+								}
+							} else {
+								val = strings.ReplaceAll(val, "\n", " ")
+								mdTableCell.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: []byte(val)})
 							}
 							continue
 						}
